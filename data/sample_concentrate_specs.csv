@@ -1,0 +1,5 @@
+concentrate_name,origin_region,wet_metric_tonnes,moisture_percentage,copper_grade_percentage,payable_copper_percentage,tc_usd_per_dmt,rc_cents_per_lb,freight_usd_per_dmt,impurity_penalty_usd_per_dmt,byproduct_credit_usd_per_dmt,commercial_note
+Clean standard concentrate,South America,10000,8.0,26.0,96.5,80,8.0,55,12,25,Balanced base case with modest by-product credit
+Higher grade concentrate,Central Africa,8500,7.0,31.0,96.8,75,7.5,70,18,35,Higher contained copper and payable metal
+High impurity concentrate,Asia Pacific,12000,9.5,23.5,95.0,95,9.0,60,55,15,Lower quality lot with larger penalty assumptions
+Low moisture concentrate,North America,9000,5.5,24.0,96.0,82,8.5,45,10,20,Lower moisture improves dry tonnes available for sale
