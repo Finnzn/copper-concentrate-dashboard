@@ -23,7 +23,7 @@ Core outputs include:
 - Gold and silver by-product credits
 - Element-level impurity penalty estimates
 - Financing cost over the settlement period
-- Sensitivity to copper price and treatment charges
+- Two-way sensitivity analysis across selected value drivers
 - Illustrative market-assumptions cargo value view
 - Scenario comparisons across market and quality cases
 - Tornado-style ranking of selected value drivers
@@ -54,6 +54,18 @@ The model uses:
 
 This conversion is required because payable copper is calculated in tonnes while RC is charged in cents per pound.
 
+## How to Read the Dashboard
+
+The sidebar defines the base cargo and base commercial terms. It controls the shipment size, quality, payable copper terms, copper price, TC/RC, freight, impurities, precious metal assumptions, financing, and FX.
+
+The main tabs use that base case in different ways:
+
+- **Value Bridge** shows the full shipment valuation from gross payable copper value through deductions, credits, financing cost, and final net value.
+- **Sensitivity** revalues the same base cargo across two selected drivers. For example, copper price versus TC, copper price versus freight, arsenic versus TC, or moisture versus freight.
+- **Scenarios** starts from the base case and applies predefined shocks such as lower copper price, higher freight, or higher impurity penalties.
+- **Market Data** keeps the selected cargo quality constant and revalues that same cargo against illustrative market assumptions by date. The sample market table varies copper price, TC/RC, freight, precious metal prices, FX, and financing rate.
+- **Risk View** ranks selected value drivers by impact and shows quick copper price, TC, and RC move tables.
+
 ## Project Structure
 
 ```text
@@ -73,6 +85,8 @@ copper-concentrate-dashboard/
 └── docs/
     └── methodology.md
 ```
+
+`data/sample_lme_prices.csv` is intentionally broader than a pure price file. It contains illustrative market assumptions by date, including copper price, TC/RC, freight, precious metal prices, FX, and financing rate. These are sample assumptions only, not live or licensed market data.
 
 ## Installation
 
@@ -108,6 +122,7 @@ python3 -m streamlit run app.py
 - Financing cost uses simple interest over selected financing days.
 - The model uses illustrative sample data and user-entered assumptions.
 - The market data tab values the same selected cargo quality against changing illustrative market terms such as copper price, TC/RC, freight, precious metal prices, FX, and financing rate.
+- The sensitivity tab shows full net cargo value, not shipment size multiplied by price. Each heatmap cell reruns the full valuation model.
 
 ## Limitations
 
@@ -115,7 +130,7 @@ This is an educational model, not a tool for live trading decisions. It does not
 
 ## Testing
 
-Run the formula tests with:
+Run the formula and risk tests with:
 
 ```bash
 pytest
