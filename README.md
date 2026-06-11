@@ -10,7 +10,7 @@ This dashboard explores the physical trade economics behind a cargo. The goal is
 
 ## What the Dashboard Models
 
-The model starts with wet metric tonnes and moisture to calculate dry metric tonnes. It then estimates contained copper, payable copper, gross payable copper value, treatment charges, refining charges, freight, impurity penalties, by-product credits, and net shipment value.
+The model starts with wet metric tonnes and moisture to calculate dry metric tonnes. It then estimates contained copper, payable copper using a simplified "lesser of" payable rule, gross payable copper value, treatment charges, refining charges, freight, impurity penalties, precious metal credits, financing cost, and net shipment value.
 
 Core outputs include:
 
@@ -20,9 +20,13 @@ Core outputs include:
 - Total deductions
 - Net shipment value
 - Value per dry metric tonne
+- Gold and silver by-product credits
+- Element-level impurity penalty estimates
+- Financing cost over the settlement period
 - Sensitivity to copper price and treatment charges
+- Illustrative market-assumptions cargo value view
 - Scenario comparisons across market and quality cases
-- Simple risk impact from copper price, TC, and RC moves
+- Tornado-style ranking of selected value drivers
 
 ## Why Copper Concentrate Valuation Is Specialized
 
@@ -97,13 +101,25 @@ python3 -m streamlit run app.py
 - Copper price is entered manually as USD per metric tonne.
 - TC is modeled as USD/dmt.
 - RC is modeled as US¢/lb of payable copper.
-- Freight, impurity penalties, and by-product credits are simplified as USD/dmt.
-- Payable copper is entered as a single percentage of contained copper.
+- Freight and flat impurity penalties are simplified as USD/dmt.
+- Payable copper is modeled as the lower of percentage payable copper and a deduction-unit formula.
+- Gold and silver credits use illustrative grades, payable rates, prices, and refining charges.
+- Arsenic, bismuth, and fluorine penalties use simplified threshold schedules.
+- Financing cost uses simple interest over selected financing days.
 - The model uses illustrative sample data and user-entered assumptions.
+- The market data tab values the same selected cargo quality against changing illustrative market terms such as copper price, TC/RC, freight, precious metal prices, FX, and financing rate.
 
 ## Limitations
 
-This is an educational model, not a tool for live trading decisions. It does not include detailed assay exchange, quotational periods, provisional pricing, hedging execution, financing costs, counterparty credit, insurance, taxes, final settlement, demurrage, smelter-specific penalty schedules, or detailed payable formulas for precious metals.
+This is an educational model, not a tool for live trading decisions. It does not include detailed assay exchange, quotational periods, provisional pricing, hedging execution, counterparty credit, insurance, taxes, final settlement, demurrage, smelter-specific blending constraints, or confidential smelter penalty schedules.
+
+## Testing
+
+Run the formula tests with:
+
+```bash
+pytest
+```
 
 ## Possible Extensions: Benefits and Challenges
 

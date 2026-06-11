@@ -1,11 +1,11 @@
-date,copper_price_usd_per_tonne,source_note
-2026-01-02,8430,Illustrative sample data
-2026-01-09,8585,Illustrative sample data
-2026-01-16,8720,Illustrative sample data
-2026-01-23,8650,Illustrative sample data
-2026-01-30,8810,Illustrative sample data
-2026-02-06,9025,Illustrative sample data
-2026-02-13,9180,Illustrative sample data
-2026-02-20,9340,Illustrative sample data
-2026-02-27,9500,Illustrative sample data
-2026-03-06,9425,Illustrative sample data
+date,copper_price_usd_per_tonne,tc_usd_per_dmt,rc_cents_per_lb,freight_usd_per_dmt,gold_price_usd_per_oz,silver_price_usd_per_oz,fx_rate_usd_to_chf,annual_financing_rate_percentage,source_note
+2026-01-02,8430,88,8.8,62,2050,23.8,0.885,6.25,Illustrative market assumptions
+2026-01-09,8585,86,8.6,61,2075,24.2,0.888,6.20,Illustrative market assumptions
+2026-01-16,8720,84,8.4,59,2110,24.9,0.892,6.10,Illustrative market assumptions
+2026-01-23,8650,85,8.5,60,2095,24.5,0.889,6.15,Illustrative market assumptions
+2026-01-30,8810,82,8.2,58,2140,25.1,0.895,6.05,Illustrative market assumptions
+2026-02-06,9025,78,7.9,57,2190,25.9,0.902,5.95,Illustrative market assumptions
+2026-02-13,9180,75,7.6,56,2240,26.6,0.908,5.85,Illustrative market assumptions
+2026-02-20,9340,73,7.4,58,2285,27.4,0.904,5.90,Illustrative market assumptions
+2026-02-27,9500,70,7.2,61,2325,28.1,0.899,6.00,Illustrative market assumptions
+2026-03-06,9425,72,7.3,64,2310,27.7,0.896,6.10,Illustrative market assumptions

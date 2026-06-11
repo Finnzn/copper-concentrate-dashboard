@@ -1,0 +1,9 @@
+[project]
+name = "copper-concentrate-dashboard"
+version = "0.1.0"
+description = "Streamlit dashboard for simplified copper concentrate trade economics."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

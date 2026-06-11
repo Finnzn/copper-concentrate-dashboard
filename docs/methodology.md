@@ -24,10 +24,14 @@ Contained copper is the theoretical copper metal inside the dry concentrate:
 contained_copper_tonnes = dry_metric_tonnes * copper_grade_percentage / 100
 ```
 
-Payable copper is the portion of contained copper that is commercially paid for after metallurgical recovery and contract deductions:
+Payable copper is the portion of contained copper that is commercially paid for after metallurgical recovery and contract deductions. The dashboard models this with a simplified "lesser of" rule:
 
 ```text
-payable_copper_tonnes = contained_copper_tonnes * payable_copper_percentage / 100
+payable_by_percentage = contained_copper_tonnes * payable_copper_percentage / 100
+payable_by_deduction =
+    dry_metric_tonnes * (copper_grade_percentage - deduction_unit_percentage) / 100
+
+payable_copper_tonnes = min(payable_by_percentage, payable_by_deduction)
 ```
 
 The LME copper price is then applied to payable copper tonnes, not directly to total concentrate tonnes.
@@ -73,20 +77,45 @@ This is a simplification. Real logistics economics may include ocean freight, in
 Some concentrates contain deleterious elements that may reduce value or limit the number of suitable smelters. The dashboard models impurity penalties as a single USD/dmt deduction:
 
 ```text
-impurity_penalty_usd = dry_metric_tonnes * impurity_penalty_usd_per_dmt
+flat_impurity_penalty_usd = dry_metric_tonnes * impurity_penalty_usd_per_dmt
 ```
 
-Real contracts can be more detailed, with thresholds and element-specific penalty schedules.
+It also includes illustrative threshold penalties for arsenic, bismuth, and fluorine:
+
+```text
+element_penalty_usd =
+    dry_metric_tonnes
+    * max(0, assay_ppm - threshold_ppm) / 1000
+    * penalty_usd_per_dmt_per_1000ppm
+```
+
+These schedules are deliberately simple and are not intended to represent a specific smelter contract.
 
 ## By-Product Credits
 
-Some copper concentrates contain payable gold, silver, or other metals. The dashboard allows a simplified by-product credit in USD/dmt:
+Some copper concentrates contain payable gold, silver, or other metals. The dashboard estimates gold and silver credits from grade, payable percentage, metal price, and refining charge:
 
 ```text
-byproduct_credit_usd = dry_metric_tonnes * byproduct_credit_usd_per_dmt
+payable_oz =
+    dry_metric_tonnes * grade_g_per_dmt / 31.1034768 * payable_percentage / 100
+
+metal_credit_usd = payable_oz * (metal_price_usd_per_oz - refining_charge_usd_per_oz)
 ```
 
-This is a simplified proxy for detailed precious metal assays, payable terms, refining charges, and price quotational periods.
+The model also allows an other by-product credit in USD/dmt as a catch-all simplification.
+
+## Financing Cost
+
+Financing cost is modeled with simple interest on positive pre-financing shipment value:
+
+```text
+financing_cost_usd =
+    max(0, subtotal_before_financing_usd)
+    * annual_financing_rate_percentage / 100
+    * financing_days / 360
+```
+
+This is a simple working-capital proxy. A full trade finance model would need payment dates, provisional invoices, final settlement, borrowing spreads, margining, and actual cash-flow timing.
 
 ## Net Smelter Return / Estimated Shipment Value
 
@@ -98,7 +127,8 @@ net_value_usd =
     - treatment_charge_usd
     - refining_charge_usd
     - freight_cost_usd
-    - impurity_penalty_usd
+    - total_impurity_penalty_usd
+    - financing_cost_usd
     + byproduct_credit_usd
 ```
 

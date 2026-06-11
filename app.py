@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -9,23 +11,42 @@ from src.risk import (
     charge_move_impact,
     copper_price_move_impact,
     largest_selected_risk_driver,
-    sensitivity_heatmap,
+    sensitivity_variable_names,
+    tornado_impacts,
+    two_way_sensitivity_heatmap,
 )
 from src.scenarios import build_scenarios
 from src.valuation import ConcentrateAssumptions, calculate_valuation, valuation_bridge
 
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
 DEFAULT_INPUTS = {
     "wet_metric_tonnes": 10_000.0,
     "moisture_percentage": 8.0,
     "copper_grade_percentage": 26.0,
     "payable_copper_percentage": 96.5,
+    "copper_payable_deduction_unit_percentage": 1.0,
     "lme_copper_price_usd_per_tonne": 9_500.0,
     "tc_usd_per_dmt": 80.0,
     "rc_cents_per_lb": 8.0,
     "freight_usd_per_dmt": 55.0,
     "impurity_penalty_usd_per_dmt": 12.0,
-    "byproduct_credit_usd_per_dmt": 25.0,
+    "gold_grade_g_per_dmt": 1.2,
+    "gold_payable_percentage": 90.0,
+    "gold_price_usd_per_oz": 2_300.0,
+    "gold_refining_charge_usd_per_oz": 8.0,
+    "silver_grade_g_per_dmt": 35.0,
+    "silver_payable_percentage": 90.0,
+    "silver_price_usd_per_oz": 28.0,
+    "silver_refining_charge_usd_per_oz": 0.45,
+    "other_byproduct_credit_usd_per_dmt": 0.0,
+    "arsenic_ppm": 1_200.0,
+    "bismuth_ppm": 150.0,
+    "fluorine_ppm": 500.0,
+    "financing_days": 45.0,
+    "annual_financing_rate_percentage": 6.0,
     "fx_rate_usd_to_chf": 0.90,
 }
 
@@ -38,9 +59,11 @@ st.set_page_config(
 
 
 def money(value: float) -> str:
-    """Format USD values for compact dashboard display."""
-
     return f"${value:,.0f}"
+
+
+def usd_text(value: float) -> str:
+    return f"USD {value:,.0f}"
 
 
 def tonnes(value: float) -> str:
@@ -79,24 +102,50 @@ def render_html_table(df: pd.DataFrame) -> None:
     )
 
 
+def format_display_table(
+    df: pd.DataFrame, formats: dict[str, str], columns: list[str] | None = None
+) -> pd.DataFrame:
+    display = df.copy()
+    if columns is not None:
+        display = display[columns]
+    for column, number_format in formats.items():
+        display[column] = display[column].map(number_format.format)
+    return display
+
+
 @st.cache_data
 def load_sample_concentrates() -> pd.DataFrame:
-    """Load illustrative concentrate profiles for quick scenario setup."""
+    return pd.read_csv(DATA_DIR / "sample_concentrate_specs.csv")
 
-    return pd.read_csv("data/sample_concentrate_specs.csv")
+
+@st.cache_data
+def load_sample_lme_prices() -> pd.DataFrame:
+    prices = pd.read_csv(DATA_DIR / "sample_lme_prices.csv", parse_dates=["date"])
+    defaults = {
+        "tc_usd_per_dmt": DEFAULT_INPUTS["tc_usd_per_dmt"],
+        "rc_cents_per_lb": DEFAULT_INPUTS["rc_cents_per_lb"],
+        "freight_usd_per_dmt": DEFAULT_INPUTS["freight_usd_per_dmt"],
+        "gold_price_usd_per_oz": DEFAULT_INPUTS["gold_price_usd_per_oz"],
+        "silver_price_usd_per_oz": DEFAULT_INPUTS["silver_price_usd_per_oz"],
+        "fx_rate_usd_to_chf": DEFAULT_INPUTS["fx_rate_usd_to_chf"],
+        "annual_financing_rate_percentage": DEFAULT_INPUTS[
+            "annual_financing_rate_percentage"
+        ],
+        "source_note": "Illustrative market assumptions",
+    }
+    for column, default in defaults.items():
+        if column not in prices.columns:
+            prices[column] = default
+    return prices.sort_values("date")
 
 
 def initialize_sidebar_state() -> None:
-    """Ensure sidebar widgets have stable defaults before they are rendered."""
-
     for key, value in DEFAULT_INPUTS.items():
         st.session_state.setdefault(key, value)
     st.session_state.setdefault("active_sample_concentrate", "Manual inputs")
 
 
 def apply_sample_to_sidebar(sample: pd.Series) -> None:
-    """Populate editable sidebar assumptions from a selected sample cargo."""
-
     sample_fields = [
         "wet_metric_tonnes",
         "moisture_percentage",
@@ -106,20 +155,21 @@ def apply_sample_to_sidebar(sample: pd.Series) -> None:
         "rc_cents_per_lb",
         "freight_usd_per_dmt",
         "impurity_penalty_usd_per_dmt",
-        "byproduct_credit_usd_per_dmt",
     ]
     for field in sample_fields:
         st.session_state[field] = float(sample[field])
 
+    st.session_state["other_byproduct_credit_usd_per_dmt"] = float(
+        sample.get("byproduct_credit_usd_per_dmt", 0.0)
+    )
+
 
 def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
-    """Collect all user assumptions in the sidebar."""
-
     initialize_sidebar_state()
     sample_concentrates = load_sample_concentrates()
     sample_names = ["Manual inputs"] + sample_concentrates["concentrate_name"].tolist()
 
-    st.sidebar.header("Sample Concentrate")
+    st.sidebar.header("Cargo Setup")
     selected_sample = st.sidebar.selectbox(
         "Load sample concentrate",
         sample_names,
@@ -145,79 +195,170 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
     else:
         st.sidebar.caption("Build a cargo case from your own assumptions.")
 
-    st.sidebar.header("Shipment Assumptions")
-    wet_metric_tonnes = st.sidebar.number_input(
-        "Shipment size, wet metric tonnes (wmt)",
-        min_value=0.0,
-        step=100.0,
-        key="wet_metric_tonnes",
-    )
-    moisture_percentage = st.sidebar.slider(
-        "Moisture percentage (%)",
-        min_value=0.0,
-        max_value=20.0,
-        step=0.1,
-        key="moisture_percentage",
-    )
-    copper_grade_percentage = st.sidebar.slider(
-        "Copper grade (%)",
-        min_value=0.0,
-        max_value=60.0,
-        step=0.1,
-        key="copper_grade_percentage",
-    )
-    payable_copper_percentage = st.sidebar.slider(
-        "Payable copper (%)",
-        min_value=0.0,
-        max_value=100.0,
-        step=0.1,
-        key="payable_copper_percentage",
-    )
+    with st.sidebar.expander("Cargo Quality", expanded=True):
+        wet_metric_tonnes = st.number_input(
+            "Shipment size, wet metric tonnes (wmt)",
+            min_value=0.0,
+            step=100.0,
+            key="wet_metric_tonnes",
+        )
+        moisture_percentage = st.slider(
+            "Moisture percentage (%)",
+            min_value=0.0,
+            max_value=20.0,
+            step=0.1,
+            key="moisture_percentage",
+        )
+        copper_grade_percentage = st.slider(
+            "Copper grade (%)",
+            min_value=0.0,
+            max_value=60.0,
+            step=0.1,
+            key="copper_grade_percentage",
+        )
+        payable_copper_percentage = st.slider(
+            "Payable copper (%)",
+            min_value=0.0,
+            max_value=100.0,
+            step=0.1,
+            key="payable_copper_percentage",
+        )
+        copper_payable_deduction_unit_percentage = st.number_input(
+            "Copper payable deduction unit (%)",
+            min_value=0.0,
+            max_value=10.0,
+            step=0.1,
+            key="copper_payable_deduction_unit_percentage",
+        )
 
-    st.sidebar.header("Commercial Terms")
-    lme_copper_price_usd_per_tonne = st.sidebar.number_input(
-        "LME copper price (USD per metric tonne)",
-        min_value=0.0,
-        step=50.0,
-        key="lme_copper_price_usd_per_tonne",
-    )
-    tc_usd_per_dmt = st.sidebar.number_input(
-        "Treatment charge, TC (USD/dmt)",
-        min_value=0.0,
-        step=1.0,
-        key="tc_usd_per_dmt",
-    )
-    rc_cents_per_lb = st.sidebar.number_input(
-        "Refining charge, RC (US¢/lb)",
-        min_value=0.0,
-        step=0.25,
-        key="rc_cents_per_lb",
-    )
-    freight_usd_per_dmt = st.sidebar.number_input(
-        "Freight/logistics cost (USD/dmt)",
-        min_value=0.0,
-        step=1.0,
-        key="freight_usd_per_dmt",
-    )
-    impurity_penalty_usd_per_dmt = st.sidebar.number_input(
-        "Impurity penalty (USD/dmt)",
-        min_value=0.0,
-        step=1.0,
-        key="impurity_penalty_usd_per_dmt",
-    )
-    byproduct_credit_usd_per_dmt = st.sidebar.number_input(
-        "Gold/silver by-product credit (USD/dmt)",
-        min_value=0.0,
-        step=1.0,
-        key="byproduct_credit_usd_per_dmt",
-    )
-    fx_rate_usd_to_chf = st.sidebar.number_input(
-        "Optional FX rate, USD to CHF",
-        min_value=0.0,
-        step=0.01,
-        format="%.4f",
-        key="fx_rate_usd_to_chf",
-    )
+    with st.sidebar.expander("Market and Charges", expanded=True):
+        lme_copper_price_usd_per_tonne = st.number_input(
+            "LME copper price (USD per metric tonne)",
+            min_value=0.0,
+            step=50.0,
+            key="lme_copper_price_usd_per_tonne",
+        )
+        tc_usd_per_dmt = st.number_input(
+            "Treatment charge, TC (USD/dmt)",
+            min_value=0.0,
+            step=1.0,
+            key="tc_usd_per_dmt",
+        )
+        rc_cents_per_lb = st.number_input(
+            "Refining charge, RC (US cents/lb)",
+            min_value=0.0,
+            step=0.25,
+            key="rc_cents_per_lb",
+        )
+        freight_usd_per_dmt = st.number_input(
+            "Freight/logistics cost (USD/dmt)",
+            min_value=0.0,
+            step=1.0,
+            key="freight_usd_per_dmt",
+        )
+
+    with st.sidebar.expander("Precious Metals"):
+        gold_grade_g_per_dmt = st.number_input(
+            "Gold grade (g/dmt)",
+            min_value=0.0,
+            step=0.1,
+            key="gold_grade_g_per_dmt",
+        )
+        gold_payable_percentage = st.slider(
+            "Gold payable (%)",
+            min_value=0.0,
+            max_value=100.0,
+            step=1.0,
+            key="gold_payable_percentage",
+        )
+        gold_price_usd_per_oz = st.number_input(
+            "Gold price (USD/oz)",
+            min_value=0.0,
+            step=25.0,
+            key="gold_price_usd_per_oz",
+        )
+        gold_refining_charge_usd_per_oz = st.number_input(
+            "Gold refining charge (USD/oz)",
+            min_value=0.0,
+            step=0.5,
+            key="gold_refining_charge_usd_per_oz",
+        )
+        silver_grade_g_per_dmt = st.number_input(
+            "Silver grade (g/dmt)",
+            min_value=0.0,
+            step=1.0,
+            key="silver_grade_g_per_dmt",
+        )
+        silver_payable_percentage = st.slider(
+            "Silver payable (%)",
+            min_value=0.0,
+            max_value=100.0,
+            step=1.0,
+            key="silver_payable_percentage",
+        )
+        silver_price_usd_per_oz = st.number_input(
+            "Silver price (USD/oz)",
+            min_value=0.0,
+            step=0.5,
+            key="silver_price_usd_per_oz",
+        )
+        silver_refining_charge_usd_per_oz = st.number_input(
+            "Silver refining charge (USD/oz)",
+            min_value=0.0,
+            step=0.05,
+            key="silver_refining_charge_usd_per_oz",
+        )
+        other_byproduct_credit_usd_per_dmt = st.number_input(
+            "Other by-product credit (USD/dmt)",
+            min_value=0.0,
+            step=1.0,
+            key="other_byproduct_credit_usd_per_dmt",
+        )
+
+    with st.sidebar.expander("Impurities and Finance"):
+        impurity_penalty_usd_per_dmt = st.number_input(
+            "Flat impurity penalty (USD/dmt)",
+            min_value=0.0,
+            step=1.0,
+            key="impurity_penalty_usd_per_dmt",
+        )
+        arsenic_ppm = st.number_input(
+            "Arsenic assay (ppm)",
+            min_value=0.0,
+            step=100.0,
+            key="arsenic_ppm",
+        )
+        bismuth_ppm = st.number_input(
+            "Bismuth assay (ppm)",
+            min_value=0.0,
+            step=25.0,
+            key="bismuth_ppm",
+        )
+        fluorine_ppm = st.number_input(
+            "Fluorine assay (ppm)",
+            min_value=0.0,
+            step=50.0,
+            key="fluorine_ppm",
+        )
+        financing_days = st.number_input(
+            "Financing days",
+            min_value=0.0,
+            step=5.0,
+            key="financing_days",
+        )
+        annual_financing_rate_percentage = st.number_input(
+            "Annual financing rate (%)",
+            min_value=0.0,
+            step=0.25,
+            key="annual_financing_rate_percentage",
+        )
+        fx_rate_usd_to_chf = st.number_input(
+            "Optional FX rate, USD to CHF",
+            min_value=0.0,
+            step=0.01,
+            format="%.4f",
+            key="fx_rate_usd_to_chf",
+        )
 
     return ConcentrateAssumptions(
         wet_metric_tonnes=wet_metric_tonnes,
@@ -229,116 +370,286 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
         rc_cents_per_lb=rc_cents_per_lb,
         freight_usd_per_dmt=freight_usd_per_dmt,
         impurity_penalty_usd_per_dmt=impurity_penalty_usd_per_dmt,
-        byproduct_credit_usd_per_dmt=byproduct_credit_usd_per_dmt,
+        copper_payable_deduction_unit_percentage=copper_payable_deduction_unit_percentage,
+        gold_grade_g_per_dmt=gold_grade_g_per_dmt,
+        gold_payable_percentage=gold_payable_percentage,
+        gold_price_usd_per_oz=gold_price_usd_per_oz,
+        gold_refining_charge_usd_per_oz=gold_refining_charge_usd_per_oz,
+        silver_grade_g_per_dmt=silver_grade_g_per_dmt,
+        silver_payable_percentage=silver_payable_percentage,
+        silver_price_usd_per_oz=silver_price_usd_per_oz,
+        silver_refining_charge_usd_per_oz=silver_refining_charge_usd_per_oz,
+        other_byproduct_credit_usd_per_dmt=other_byproduct_credit_usd_per_dmt,
+        arsenic_ppm=arsenic_ppm,
+        bismuth_ppm=bismuth_ppm,
+        fluorine_ppm=fluorine_ppm,
+        financing_days=financing_days,
+        annual_financing_rate_percentage=annual_financing_rate_percentage,
         fx_rate_usd_to_chf=fx_rate_usd_to_chf,
     )
 
 
-def show_kpis(result) -> None:
-    first_row = st.columns(3)
-    second_row = st.columns(3)
+def show_kpis(result, driver: str, impact: float) -> None:
+    first_row = st.columns(4)
+    second_row = st.columns(4)
     first_row[0].metric("Dry metric tonnes", tonnes(result.dry_metric_tonnes))
     first_row[1].metric("Payable copper tonnes", tonnes(result.payable_copper_tonnes))
-    first_row[2].metric(
-        "Gross payable copper value", money(result.gross_copper_value_usd)
-    )
-    second_row[0].metric("Total deductions", money(result.total_deductions_usd))
-    second_row[1].metric("Net shipment value", money(result.net_value_usd))
-    second_row[2].metric("Value per dmt", f"${result.value_per_dmt_usd:,.2f}/dmt")
+    first_row[2].metric("Net shipment value", money(result.net_value_usd))
+    first_row[3].metric("Value per dmt", f"${result.value_per_dmt_usd:,.2f}/dmt")
+    second_row[0].metric("Gross copper value", money(result.gross_copper_value_usd))
+    second_row[1].metric("By-product credits", money(result.byproduct_credit_usd))
+    second_row[2].metric("Total deductions", money(result.total_deductions_usd))
+    second_row[3].metric(driver, money(impact))
 
 
 def show_bridge_chart(result) -> None:
     bridge = valuation_bridge(result)
-    chart_data = pd.DataFrame(
-        {"Component": list(bridge.keys()), "Value USD": list(bridge.values())}
-    )
-    colors = [
-        "#2E7D5B" if value >= 0 else "#B44A3F" for value in chart_data["Value USD"]
-    ]
+    components = list(bridge.keys()) + ["Net value"]
+    values = list(bridge.values()) + [result.net_value_usd]
+    measures = ["relative"] * len(bridge) + ["total"]
+    text = [money(value) for value in values]
+
     fig = go.Figure(
-        go.Bar(
-            x=chart_data["Component"],
-            y=chart_data["Value USD"],
-            marker_color=colors,
-            text=[money(value) for value in chart_data["Value USD"]],
+        go.Waterfall(
+            x=components,
+            y=values,
+            measure=measures,
+            text=text,
             textposition="outside",
+            connector={"line": {"color": "rgba(80, 80, 80, 0.45)"}},
+            increasing={"marker": {"color": "#2E7D5B"}},
+            decreasing={"marker": {"color": "#B44A3F"}},
+            totals={"marker": {"color": "#26323f"}},
         )
     )
     fig.update_layout(
-        title="Shipment Value Bridge",
+        title="Shipment Value Waterfall",
         yaxis_title="USD",
         xaxis_title="",
         showlegend=False,
-        margin=dict(l=20, r=20, t=60, b=80),
+        height=560,
+        margin=dict(l=20, r=20, t=60, b=90),
     )
     st.plotly_chart(fig, use_container_width=True)
 
 
 def show_sensitivity_heatmap(assumptions: ConcentrateAssumptions) -> None:
-    heatmap = sensitivity_heatmap(assumptions)
+    variables = sensitivity_variable_names()
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        x_variable = st.selectbox(
+            "X-axis driver",
+            variables,
+            index=variables.index("Copper price"),
+        )
+    with col2:
+        y_options = [variable for variable in variables if variable != x_variable]
+        default_y = "TC" if "TC" in y_options else y_options[0]
+        y_variable = st.selectbox(
+            "Y-axis driver",
+            y_options,
+            index=y_options.index(default_y),
+        )
+    with col3:
+        steps = st.slider(
+            "Grid size",
+            min_value=5,
+            max_value=13,
+            value=9,
+            step=2,
+        )
+
+    heatmap = two_way_sensitivity_heatmap(
+        assumptions,
+        x_variable=x_variable,
+        y_variable=y_variable,
+        steps=steps,
+    )
+    x_label = heatmap.columns[0]
+    y_label = heatmap.columns[1]
     pivot = heatmap.pivot(
-        index="TC USD/dmt", columns="Copper price USD/t", values="Net value USD"
+        index=y_label, columns=x_label, values="Net value USD"
     )
     fig = px.imshow(
         pivot,
-        labels=dict(x="Copper price USD/t", y="TC USD/dmt", color="Net value USD"),
+        labels=dict(x=x_label, y=y_label, color="Net value USD"),
         color_continuous_scale="RdYlGn",
         aspect="auto",
     )
-    fig.update_layout(title="Net Value Sensitivity: Copper Price vs TC")
+    fig.update_layout(title=f"Net Value Sensitivity: {x_variable} vs {y_variable}")
     st.plotly_chart(fig, use_container_width=True)
+
+    sensitivity_display = format_display_table(
+        heatmap,
+        {
+            x_label: "{:,.2f}",
+            y_label: "{:,.2f}",
+            "Net value USD": "{:,.0f}",
+        },
+    )
+    render_html_table(sensitivity_display)
+
+
+def show_market_data(assumptions: ConcentrateAssumptions) -> None:
+    market = load_sample_lme_prices()
+
+    def value_with_market_row(row: pd.Series) -> float:
+        market_assumptions = ConcentrateAssumptions(
+            **{
+                **assumptions.__dict__,
+                "lme_copper_price_usd_per_tonne": float(
+                    row["copper_price_usd_per_tonne"]
+                ),
+                "tc_usd_per_dmt": float(row["tc_usd_per_dmt"]),
+                "rc_cents_per_lb": float(row["rc_cents_per_lb"]),
+                "freight_usd_per_dmt": float(row["freight_usd_per_dmt"]),
+                "gold_price_usd_per_oz": float(row["gold_price_usd_per_oz"]),
+                "silver_price_usd_per_oz": float(row["silver_price_usd_per_oz"]),
+                "fx_rate_usd_to_chf": float(row["fx_rate_usd_to_chf"]),
+                "annual_financing_rate_percentage": float(
+                    row["annual_financing_rate_percentage"]
+                ),
+            }
+        )
+        return calculate_valuation(market_assumptions).net_value_usd
+
+    market["Shipment value USD"] = market.apply(value_with_market_row, axis=1)
+
+    st.caption(
+        "This view keeps the selected cargo quality constant and changes only "
+        "illustrative market terms across dates."
+    )
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=market["date"],
+            y=market["copper_price_usd_per_tonne"],
+            mode="lines+markers",
+            name="Copper price USD/t",
+            yaxis="y",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=market["date"],
+            y=market["Shipment value USD"],
+            mode="lines+markers",
+            name="Shipment value USD",
+            yaxis="y2",
+        )
+    )
+    fig.update_layout(
+        title="Same Cargo Under Illustrative Market Assumptions",
+        yaxis=dict(title="Copper price USD/t"),
+        yaxis2=dict(title="Shipment value USD", overlaying="y", side="right"),
+        legend=dict(orientation="h"),
+        margin=dict(l=35, r=35, t=70, b=50),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    price_display = market.rename(
+        columns={
+            "date": "Date",
+            "copper_price_usd_per_tonne": "Copper price USD/t",
+            "tc_usd_per_dmt": "TC USD/dmt",
+            "rc_cents_per_lb": "RC US cents/lb",
+            "freight_usd_per_dmt": "Freight USD/dmt",
+            "gold_price_usd_per_oz": "Gold price USD/oz",
+            "silver_price_usd_per_oz": "Silver price USD/oz",
+            "fx_rate_usd_to_chf": "USD/CHF",
+            "annual_financing_rate_percentage": "Financing rate %",
+        }
+    )
+    price_display["Date"] = price_display["Date"].dt.date.astype(str)
+    price_display = format_display_table(
+        price_display,
+        {
+            "Copper price USD/t": "{:,.0f}",
+            "TC USD/dmt": "{:,.2f}",
+            "RC US cents/lb": "{:,.2f}",
+            "Freight USD/dmt": "{:,.2f}",
+            "Gold price USD/oz": "{:,.0f}",
+            "Silver price USD/oz": "{:,.2f}",
+            "USD/CHF": "{:.4f}",
+            "Financing rate %": "{:.2f}",
+            "Shipment value USD": "{:,.0f}",
+        },
+        [
+            "Date",
+            "Copper price USD/t",
+            "TC USD/dmt",
+            "RC US cents/lb",
+            "Freight USD/dmt",
+            "Gold price USD/oz",
+            "Silver price USD/oz",
+            "USD/CHF",
+            "Financing rate %",
+            "Shipment value USD",
+        ],
+    )
+    render_html_table(price_display)
 
 
 def show_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
     scenarios = build_scenarios(assumptions)
-    tick_labels = {
-        "Base case": "Base<br>case",
-        "Lower copper price": "Lower<br>copper<br>price",
-        "Higher copper price": "Higher<br>copper<br>price",
-        "Lower TC/RC market": "Lower<br>TC/RC<br>market",
-        "Higher freight/logistics cost": "Higher<br>freight/logistics<br>cost",
-        "High impurity penalty case": "High impurity<br>penalty<br>case",
-    }
-    x_positions = list(range(len(scenarios)))
-    colors = px.colors.qualitative.Safe[: len(scenarios)]
-
-    fig = go.Figure(
-        go.Bar(
-            x=x_positions,
-            y=scenarios["Net shipment value USD"],
-            marker_color=colors,
-            text=[money(value) for value in scenarios["Net shipment value USD"]],
-            textposition="outside",
-            textfont_size=15,
-            marker_line_width=0,
-            width=0.74,
-            customdata=scenarios["Scenario"],
-            hovertemplate="<b>%{customdata}</b><br>Net value: $%{y:,.0f}<extra></extra>",
-        )
+    fig = px.bar(
+        scenarios,
+        x="Scenario",
+        y="Net shipment value USD",
+        color="Scenario",
+        text=scenarios["Net shipment value USD"].map(lambda value: money(value)),
+        color_discrete_sequence=px.colors.qualitative.Safe,
     )
-    y_max = scenarios["Net shipment value USD"].max() * 1.16
+    fig.update_traces(textposition="outside", hovertemplate="%{x}<br>$%{y:,.0f}")
     fig.update_layout(
         title="Scenario Comparison",
-        height=580,
+        height=560,
         showlegend=False,
         xaxis_title="",
         yaxis_title="Net shipment value (USD)",
-        margin=dict(l=35, r=35, t=80, b=120),
-        uniformtext_minsize=13,
-        uniformtext_mode="show",
+        margin=dict(l=35, r=35, t=80, b=130),
     )
-    fig.update_xaxes(
-        tickmode="array",
-        tickvals=x_positions,
-        ticktext=[tick_labels[name] for name in scenarios["Scenario"]],
-        tickfont=dict(size=12),
-        tickangle=0,
-        automargin=True,
-        range=[-0.55, len(scenarios) - 0.45],
-    )
-    fig.update_yaxes(tickformat=",.0f", range=[0, y_max])
+    fig.update_xaxes(tickangle=0, automargin=True)
+    fig.update_yaxes(tickformat=",.0f")
     st.plotly_chart(fig, use_container_width=True)
     return scenarios
+
+
+def show_tornado_chart(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
+    tornado = tornado_impacts(assumptions)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            y=tornado["Driver"],
+            x=tornado["Low impact USD"],
+            orientation="h",
+            name="Low case",
+            marker_color="#B44A3F",
+            hovertemplate="%{y}<br>Impact: $%{x:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            y=tornado["Driver"],
+            x=tornado["High impact USD"],
+            orientation="h",
+            name="High case",
+            marker_color="#2E7D5B",
+            hovertemplate="%{y}<br>Impact: $%{x:,.0f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title="Value Driver Tornado",
+        barmode="overlay",
+        xaxis_title="Impact versus base case (USD)",
+        yaxis_title="",
+        height=520,
+        margin=dict(l=35, r=35, t=70, b=40),
+    )
+    fig.add_vline(x=0, line_width=1, line_color="#26323f")
+    st.plotly_chart(fig, use_container_width=True)
+    return tornado
 
 
 def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
@@ -346,6 +657,8 @@ def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
     price_impact = copper_price_move_impact(assumptions)
     charge_impact = charge_move_impact(assumptions)
     driver, impact = largest_selected_risk_driver(assumptions)
+
+    show_tornado_chart(assumptions)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -374,91 +687,108 @@ def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
 
     st.info(
         f"Largest selected impact: {driver}, changing net value by {money(impact)}. "
-        "A commercial, operations, risk, or analyst team could use this type of "
-        "tool to compare shipment quality, understand margin drivers, test "
-        "commercial terms, and brief traders before negotiating TC/RC, freight, "
-        "or impurity clauses."
+        "Use this as a quick commercial briefing view before negotiating price, "
+        "TC/RC, freight, quality, impurity, or working-capital terms."
     )
+
+
+def show_detail_table(result) -> None:
+    detail = pd.DataFrame(
+        [
+            {"Metric": "Contained copper tonnes", "Value": result.contained_copper_tonnes},
+            {
+                "Metric": "Payable copper by percentage tonnes",
+                "Value": result.payable_copper_by_percentage_tonnes,
+            },
+            {
+                "Metric": "Payable copper by deduction tonnes",
+                "Value": result.payable_copper_by_deduction_tonnes,
+            },
+            {"Metric": "Payable copper pounds", "Value": result.payable_copper_lb},
+            {"Metric": "Treatment charge USD", "Value": result.treatment_charge_usd},
+            {"Metric": "Refining charge USD", "Value": result.refining_charge_usd},
+            {"Metric": "Freight cost USD", "Value": result.freight_cost_usd},
+            {"Metric": "Flat impurity penalty USD", "Value": result.flat_impurity_penalty_usd},
+            {"Metric": "Arsenic penalty USD", "Value": result.arsenic_penalty_usd},
+            {"Metric": "Bismuth penalty USD", "Value": result.bismuth_penalty_usd},
+            {"Metric": "Fluorine penalty USD", "Value": result.fluorine_penalty_usd},
+            {"Metric": "Gold payable ounces", "Value": result.gold_payable_oz},
+            {"Metric": "Silver payable ounces", "Value": result.silver_payable_oz},
+            {"Metric": "Gold credit USD", "Value": result.gold_credit_usd},
+            {"Metric": "Silver credit USD", "Value": result.silver_credit_usd},
+            {"Metric": "Other by-product credit USD", "Value": result.other_byproduct_credit_usd},
+            {"Metric": "Financing cost USD", "Value": result.financing_cost_usd},
+        ]
+    )
+    detail_display = detail.copy()
+    detail_display["Value"] = detail_display["Value"].map("{:,.2f}".format)
+    render_html_table(detail_display)
 
 
 def main() -> None:
     assumptions = build_assumptions_from_sidebar()
     result = calculate_valuation(assumptions)
+    driver, impact = largest_selected_risk_driver(assumptions)
 
     st.title("Copper Concentrate Trade Economics Dashboard")
     st.write(
         "A simplified educational tool for understanding copper concentrate "
-        "shipment economics. It focuses on physical trade value drivers such as "
-        "quality, payable metal, treatment and refining charges, logistics, "
-        "impurity penalties, and by-product credits."
+        "shipment economics across quality, payable metal, TC/RC, impurities, "
+        "precious-metal credits, logistics, financing, and market price risk."
     )
 
     if result.dry_metric_tonnes <= 0:
         st.error("Dry metric tonnes are zero. Increase shipment size or reduce moisture.")
         return
 
-    show_kpis(result)
+    st.caption(
+        f"Commercial read: this cargo values at {usd_text(result.net_value_usd)} "
+        f"or USD {result.value_per_dmt_usd:,.2f}/dmt. "
+        f"The selected risk move with the largest impact is {driver}."
+    )
+    show_kpis(result, driver, impact)
 
-    st.warning(
-        "TC is charged per dry metric tonne of concentrate because it relates to "
-        "treating the bulk material. RC is charged per pound of payable copper "
-        "because it relates to refining the contained payable metal."
+    st.info(
+        "The sidebar defines the base cargo and base commercial terms. "
+        "Value Bridge and Risk View use that base case directly. "
+        "Sensitivity lets you choose two drivers and revalue the base cargo across them. "
+        "Scenarios start from the same base case and shock selected assumptions. "
+        "Market Data keeps the selected cargo quality constant, then revalues it "
+        "against illustrative market terms by date."
     )
 
     st.caption(
-        f"Unit conversion used: 1 metric tonne = 2,204.62262 lb. "
+        "Unit conversion used: 1 metric tonne = 2,204.62262 lb. "
         f"Indicative net value in CHF at selected FX: CHF {result.net_value_chf:,.0f}."
     )
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Value Bridge", "Sensitivity", "Scenarios", "Risk View"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Value Bridge", "Sensitivity", "Scenarios", "Market Data", "Risk View"]
     )
     with tab1:
         show_bridge_chart(result)
-        detail = pd.DataFrame(
-            [
-                {"Metric": "Contained copper tonnes", "Value": result.contained_copper_tonnes},
-                {"Metric": "Payable copper pounds", "Value": result.payable_copper_lb},
-                {"Metric": "Treatment charge USD", "Value": result.treatment_charge_usd},
-                {"Metric": "Refining charge USD", "Value": result.refining_charge_usd},
-                {"Metric": "Freight cost USD", "Value": result.freight_cost_usd},
-                {"Metric": "Impurity penalty USD", "Value": result.impurity_penalty_usd},
-                {"Metric": "By-product credit USD", "Value": result.byproduct_credit_usd},
-            ]
-        )
-        detail_display = detail.copy()
-        detail_display["Value"] = detail_display["Value"].map("{:,.2f}".format)
-        render_html_table(detail_display)
+        show_detail_table(result)
     with tab2:
         show_sensitivity_heatmap(assumptions)
     with tab3:
         scenario_table = show_scenarios(assumptions)
-        scenario_display = scenario_table.copy()
-        scenario_display["Copper price USD/t"] = scenario_display[
-            "Copper price USD/t"
-        ].map("{:,.0f}".format)
-        scenario_display["TC USD/dmt"] = scenario_display["TC USD/dmt"].map(
-            "{:,.2f}".format
+        scenario_display = format_display_table(
+            scenario_table,
+            {
+                "Copper price USD/t": "{:,.2f}",
+                "TC USD/dmt": "{:,.2f}",
+                "RC US¢/lb": "{:,.2f}",
+                "Freight USD/dmt": "{:,.2f}",
+                "Impurity penalty USD/dmt": "{:,.2f}",
+                "Net shipment value USD": "{:,.2f}",
+                "Value per dmt USD": "{:,.2f}",
+            },
         )
-        scenario_display["RC US¢/lb"] = scenario_display["RC US¢/lb"].map(
-            "{:,.2f}".format
-        )
-        scenario_display["Freight USD/dmt"] = scenario_display[
-            "Freight USD/dmt"
-        ].map("{:,.2f}".format)
-        scenario_display["Impurity penalty USD/dmt"] = scenario_display[
-            "Impurity penalty USD/dmt"
-        ].map("{:,.2f}".format)
-        scenario_display["Net shipment value USD"] = scenario_display[
-            "Net shipment value USD"
-        ].map("{:,.0f}".format)
-        scenario_display["Value per dmt USD"] = scenario_display[
-            "Value per dmt USD"
-        ].map("{:,.2f}".format)
         render_html_table(scenario_display)
     with tab4:
+        show_market_data(assumptions)
+    with tab5:
         show_risk_section(assumptions)
-
 
 
 if __name__ == "__main__":
