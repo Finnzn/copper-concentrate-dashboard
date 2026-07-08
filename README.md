@@ -106,6 +106,74 @@ The simulation is vectorized with NumPy and loops over months rather than over
 every simulation path. This keeps 10,000 simulations over a 24-month horizon
 reasonable on a normal laptop.
 
+## When The Monte Carlo Is Useful
+
+The Monte Carlo page is most useful when the trade still has open or imperfectly
+hedged exposure. It is a risk tool for understanding the distribution of possible
+outcomes, not a replacement for calculating a locked physical spread.
+
+Good applications include:
+
+- Unpriced inventory where the sale price is not fixed yet
+- Purchase and sale quotational periods that do not match
+- Concentrate trades exposed to TC/RC, freight, basis, FX, or assay uncertainty
+- Partially hedged positions where the hedge ratio is below 100%
+- Hedges that do not exactly match the physical exposure by date, exchange,
+  location, grade, premium, or quotation period
+- Stress tests for copper price, TC/RC normalization, freight spikes, basis moves,
+  and financing assumptions
+- Downside planning through probability of loss, VaR, CVaR, and bad-tail margin
+  outcomes
+
+The current Monte Carlo is less useful for a perfectly locked carry trade. For
+example, if a trader already owns copper cathode, has fixed the physical sale
+price, has fixed freight or freight exposure, and all remaining costs are known,
+then copper price P&L VaR should be close to zero. In that case the relevant
+analysis is:
+
+```text
+locked sale price
+- known purchase/value basis
+- known carry, freight, storage, insurance, finance, and handling costs
+= locked net margin
+```
+
+Monte Carlo still has value for that trade only if residual risks remain, such as
+counterparty default, delivery delay, QP mismatch, basis/premium mismatch,
+financing-rate changes, futures margin-call liquidity, quality problems, or
+quantity tolerance.
+
+## Forward Curve Versus Simulated Spot
+
+The dashboard currently simulates future spot-style paths. A simulated future spot
+price is an uncertain future outcome. A futures or forward curve is different: it
+is today's tradable price for a future delivery or pricing month.
+
+For locked physical economics, a trader normally starts with the forward curve:
+
+```text
+M6 sale price
+- M3 purchase price
+- cost of carry
+= forward carry margin
+```
+
+If the M3/M6 spread is large enough to cover financing, storage, insurance,
+warehouse costs, freight, and execution costs, the trade can be attractive even if
+the current spot-style stress test looks weak.
+
+Contango means forward prices are above nearby or spot prices. This can help an
+inventory carry trade because the future sale price may compensate the cost of
+holding material.
+
+Backwardation means forward prices are below nearby or spot prices. This usually
+hurts a carry trade because the future sale price may not cover the cost of
+holding material.
+
+The stronger future version of this project would use the forward curve as the
+base commercial pricing layer, then use Monte Carlo to simulate residual risk
+around that locked or partially locked trade.
+
 ## Trade Modes
 
 The Monte Carlo page separates physical business models instead of mixing every

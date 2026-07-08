@@ -121,7 +121,63 @@ next_value =
 Freight can also include jump shocks. Shocks can be correlated through the
 fallback correlation matrix.
 
-## 7. Trade Modes
+## 7. Forward Pricing And Application Scope
+
+The current Monte Carlo engine is closer to a spot-style path stress test than a
+full forward physical trading book. It simulates possible future spot-style copper
+prices and other drivers, then revalues the selected trade structure along those
+paths.
+
+This is useful for open or imperfectly hedged exposure:
+
+- Inventory that has not been sold at a fixed price
+- Purchase and sale QPs that settle in different months
+- Concentrate exposure to TC/RC, freight, basis, FX, and non-copper drivers
+- Hedge ratios below 100%
+- Hedge mismatch by date, exchange, grade, location, premium, or pricing period
+- Stress testing probability of loss, VaR, CVaR, and bad-tail outcomes
+
+It is not the right tool for proving the profit of a perfectly locked physical
+carry trade. In a locked carry trade, the first-order economics are determined by
+known or tradable forward prices and known carry costs:
+
+```text
+locked_forward_sale_price
+- locked_forward_purchase_price
+- financing
+- storage
+- insurance
+- freight
+- warehouse and handling costs
+= locked_net_margin
+```
+
+If every price, quantity, quality, cost, and counterparty obligation is fixed and
+matched, outright copper price VaR should be close to zero. Remaining risk would
+come from residual items such as delivery delay, counterparty default, QP
+mismatch, physical premium/basis mismatch, hedge liquidity, margin calls, quality
+disputes, and quantity tolerance.
+
+Forward curves and simulated spot paths answer different questions:
+
+```text
+forward curve = today's tradable price for future delivery or pricing months
+simulated spot path = possible future market outcomes around the base case
+```
+
+Contango means forward prices are above nearby or spot prices. Backwardation means
+forward prices are below nearby or spot prices. For physical inventory, the
+important commercial question is whether the forward spread covers the full cost
+of carry.
+
+The intended future architecture is:
+
+```text
+forward curve and QP terms define the base locked economics
+Monte Carlo simulates residual uncertainty around those economics
+```
+
+## 8. Trade Modes
 
 The Monte Carlo engine supports four trade modes.
 
@@ -183,7 +239,7 @@ This preserves the initial prototype logic:
 buy concentrate exposure -> carry it -> sell payable copper equivalent
 ```
 
-## 8. Hedge Logic
+## 9. Hedge Logic
 
 The model assumes long physical copper exposure can be hedged with a short
 futures-style position.
@@ -198,7 +254,7 @@ hedge_pnl =
 The hedge is deliberately simplified. It does not yet fully model futures curves,
 rolls, exchange margin calls, or QP timing.
 
-## 9. Risk Metrics
+## 10. Risk Metrics
 
 The Monte Carlo module calculates final margin distributions and summary metrics:
 
@@ -219,7 +275,12 @@ VaR95 = max(0, -P5_margin)
 
 CVaR is the average loss in the worst 5% tail.
 
-## 10. Limitations
+For a fully locked and perfectly matched trade, market P&L VaR can be close to
+zero. In that situation, risk reporting should focus less on outright copper price
+VaR and more on residual basis risk, liquidity VaR from futures margin calls,
+counterparty credit risk, delay risk, and operational stress scenarios.
+
+## 11. Limitations
 
 The model does not yet include:
 

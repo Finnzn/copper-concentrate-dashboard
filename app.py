@@ -71,32 +71,74 @@ def tonnes(value: float) -> str:
     return f"{value:,.2f} t"
 
 
-def render_html_table(df: pd.DataFrame) -> None:
-    """Render a small table without Streamlit's pyarrow-backed dataframe path."""
-
+def apply_dashboard_style() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --copper-ink: #18212b;
+            --copper-muted: #5b6775;
+            --copper-line: rgba(24, 33, 43, 0.14);
+            --copper-panel: #f7f9fb;
+            --copper-accent: #9f5b35;
+            --copper-green: #28785f;
+            --copper-red: #a8433e;
+        }
+        .block-container {
+            padding-top: 1.8rem;
+            padding-bottom: 2.5rem;
+        }
+        h1, h2, h3 {
+            letter-spacing: 0;
+        }
+        div[data-testid="stMetric"] {
+            background: var(--copper-panel);
+            border: 1px solid var(--copper-line);
+            border-radius: 8px;
+            padding: 0.75rem 0.85rem;
+        }
+        div[data-testid="stMetricLabel"] p {
+            color: var(--copper-muted);
+            font-size: 0.86rem;
+        }
+        div[data-testid="stMetricValue"] {
+            color: var(--copper-ink);
+            font-size: 1.55rem;
+        }
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3 {
+            color: var(--copper-ink);
+        }
         .dashboard-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.92rem;
+            font-size: 0.9rem;
         }
         .dashboard-table th {
-            background-color: #26323f;
+            background-color: var(--copper-ink);
             color: #ffffff;
             text-align: left;
             padding: 0.55rem;
             border-bottom: 1px solid rgba(255, 255, 255, 0.16);
         }
         .dashboard-table td {
-            padding: 0.5rem 0.55rem;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.28);
+            padding: 0.52rem 0.55rem;
+            border-bottom: 1px solid var(--copper-line);
+            vertical-align: top;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def section_note(text: str) -> None:
+    st.caption(text)
+
+
+def render_html_table(df: pd.DataFrame) -> None:
+    """Render a small table without Streamlit's pyarrow-backed dataframe path."""
+
     st.markdown(
         df.to_html(index=False, escape=True, classes="dashboard-table"),
         unsafe_allow_html=True,
@@ -170,11 +212,12 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
     sample_concentrates = load_sample_concentrates()
     sample_names = ["Manual inputs"] + sample_concentrates["concentrate_name"].tolist()
 
-    st.sidebar.header("Cargo Setup")
+    st.sidebar.header("Cargo Case")
     selected_sample = st.sidebar.selectbox(
-        "Load sample concentrate",
+        "Starting point",
         sample_names,
         index=sample_names.index(st.session_state.active_sample_concentrate),
+        help="Choose a sample cargo or keep manual inputs.",
     )
 
     if selected_sample != st.session_state.active_sample_concentrate:
@@ -194,9 +237,9 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
             f"{selected_row['origin_region']} - {selected_row['commercial_note']}"
         )
     else:
-        st.sidebar.caption("Build a cargo case from your own assumptions.")
+        st.sidebar.caption("Manual case: edit quality, prices, charges, and financing below.")
 
-    with st.sidebar.expander("Cargo Quality", expanded=True):
+    with st.sidebar.expander("1. Cargo Quality", expanded=True):
         wet_metric_tonnes = st.number_input(
             "Shipment size, wet metric tonnes (wmt)",
             min_value=0.0,
@@ -225,14 +268,15 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
             key="payable_copper_percentage",
         )
         copper_payable_deduction_unit_percentage = st.number_input(
-            "Copper payable deduction unit (%)",
+            "Payable deduction unit (% Cu)",
             min_value=0.0,
             max_value=10.0,
             step=0.1,
             key="copper_payable_deduction_unit_percentage",
+            help="Alternative payability rule: payable copper is limited by grade less this deduction.",
         )
 
-    with st.sidebar.expander("Market and Charges", expanded=True):
+    with st.sidebar.expander("2. Market Terms and Charges", expanded=True):
         lme_copper_price_usd_per_tonne = st.number_input(
             "LME copper price (USD per metric tonne)",
             min_value=0.0,
@@ -244,12 +288,14 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
             min_value=-200.0,
             step=1.0,
             key="tc_usd_per_dmt",
+            help="Positive TC reduces value; negative TC acts as a commercial credit.",
         )
         rc_cents_per_lb = st.number_input(
             "Refining charge, RC (US cents/lb)",
             min_value=-20.0,
             step=0.25,
             key="rc_cents_per_lb",
+            help="Applied to payable copper pounds.",
         )
         freight_usd_per_dmt = st.number_input(
             "Freight/logistics cost (USD/dmt)",
@@ -258,7 +304,7 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
             key="freight_usd_per_dmt",
         )
 
-    with st.sidebar.expander("Precious Metals"):
+    with st.sidebar.expander("3. Precious-Metal Credits"):
         gold_grade_g_per_dmt = st.number_input(
             "Gold grade (g/dmt)",
             min_value=0.0,
@@ -316,7 +362,7 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
             key="other_byproduct_credit_usd_per_dmt",
         )
 
-    with st.sidebar.expander("Impurities and Finance"):
+    with st.sidebar.expander("4. Impurities, Finance and FX"):
         impurity_penalty_usd_per_dmt = st.number_input(
             "Flat impurity penalty (USD/dmt)",
             min_value=0.0,
@@ -393,14 +439,14 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
 def show_kpis(result, driver: str, impact: float) -> None:
     first_row = st.columns(4)
     second_row = st.columns(4)
-    first_row[0].metric("Dry metric tonnes", tonnes(result.dry_metric_tonnes))
-    first_row[1].metric("Payable copper tonnes", tonnes(result.payable_copper_tonnes))
+    first_row[0].metric("Dry tonnes", tonnes(result.dry_metric_tonnes))
+    first_row[1].metric("Payable copper", tonnes(result.payable_copper_tonnes))
     first_row[2].metric("Net shipment value", money(result.net_value_usd))
     first_row[3].metric("Value per dmt", f"${result.value_per_dmt_usd:,.2f}/dmt")
     second_row[0].metric("Gross copper value", money(result.gross_copper_value_usd))
     second_row[1].metric("By-product credits", money(result.byproduct_credit_usd))
     second_row[2].metric("Total deductions", money(result.total_deductions_usd))
-    second_row[3].metric(driver, money(impact))
+    second_row[3].metric(f"Largest quick shock: {driver}", money(impact))
 
 
 def show_bridge_chart(result) -> None:
@@ -418,20 +464,24 @@ def show_bridge_chart(result) -> None:
             text=text,
             textposition="outside",
             connector={"line": {"color": "rgba(80, 80, 80, 0.45)"}},
-            increasing={"marker": {"color": "#2E7D5B"}},
-            decreasing={"marker": {"color": "#B44A3F"}},
-            totals={"marker": {"color": "#26323f"}},
+            increasing={"marker": {"color": "#28785F"}},
+            decreasing={"marker": {"color": "#A8433E"}},
+            totals={"marker": {"color": "#18212B"}},
         )
     )
     fig.update_layout(
-        title="Shipment Value Waterfall",
-        yaxis_title="USD",
+        title="How Gross Copper Value Becomes Net Shipment Value",
+        yaxis_title="Value impact (USD)",
         xaxis_title="",
         showlegend=False,
         height=560,
         margin=dict(l=20, r=20, t=60, b=90),
     )
     st.plotly_chart(fig, use_container_width=True)
+    section_note(
+        "Waterfall bars show each addition or deduction from payable copper value. "
+        "A negative TC/RC appears as a credit because it increases net value."
+    )
 
 
 def show_sensitivity_heatmap(assumptions: ConcentrateAssumptions) -> None:
@@ -439,7 +489,7 @@ def show_sensitivity_heatmap(assumptions: ConcentrateAssumptions) -> None:
     col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
         x_variable = st.selectbox(
-            "X-axis driver",
+            "Horizontal driver",
             variables,
             index=variables.index("Copper price"),
         )
@@ -447,13 +497,13 @@ def show_sensitivity_heatmap(assumptions: ConcentrateAssumptions) -> None:
         y_options = [variable for variable in variables if variable != x_variable]
         default_y = "TC" if "TC" in y_options else y_options[0]
         y_variable = st.selectbox(
-            "Y-axis driver",
+            "Vertical driver",
             y_options,
             index=y_options.index(default_y),
         )
     with col3:
         steps = st.slider(
-            "Grid size",
+            "Grid detail",
             min_value=5,
             max_value=13,
             value=9,
@@ -473,12 +523,19 @@ def show_sensitivity_heatmap(assumptions: ConcentrateAssumptions) -> None:
     )
     fig = px.imshow(
         pivot,
-        labels=dict(x=x_label, y=y_label, color="Net value USD"),
+        labels=dict(x=x_label, y=y_label, color="Net value (USD)"),
         color_continuous_scale="RdYlGn",
         aspect="auto",
     )
-    fig.update_layout(title=f"Net Value Sensitivity: {x_variable} vs {y_variable}")
+    fig.update_layout(
+        title=f"Net Shipment Value Across {x_variable} and {y_variable}",
+        margin=dict(l=35, r=35, t=70, b=55),
+    )
     st.plotly_chart(fig, use_container_width=True)
+    section_note(
+        "Each cell recalculates the same cargo using the two selected drivers. "
+        "Green cells have higher net shipment value; red cells have lower value."
+    )
 
     sensitivity_display = format_display_table(
         heatmap,
@@ -516,7 +573,7 @@ def show_market_data(assumptions: ConcentrateAssumptions) -> None:
 
     market["Shipment value USD"] = market.apply(value_with_market_row, axis=1)
 
-    st.caption(
+    section_note(
         "This view keeps the selected cargo quality constant and changes only "
         "illustrative market terms across dates."
     )
@@ -527,8 +584,9 @@ def show_market_data(assumptions: ConcentrateAssumptions) -> None:
             x=market["date"],
             y=market["copper_price_usd_per_tonne"],
             mode="lines+markers",
-            name="Copper price USD/t",
+            name="Copper price (USD/t)",
             yaxis="y",
+            line=dict(color="#9F5B35", width=3),
         )
     )
     fig.add_trace(
@@ -536,15 +594,16 @@ def show_market_data(assumptions: ConcentrateAssumptions) -> None:
             x=market["date"],
             y=market["Shipment value USD"],
             mode="lines+markers",
-            name="Shipment value USD",
+            name="Net shipment value (USD)",
             yaxis="y2",
+            line=dict(color="#28785F", width=3),
         )
     )
     fig.update_layout(
-        title="Same Cargo Under Illustrative Market Assumptions",
+        title="Same Cargo Revalued Under Illustrative Market Terms",
         yaxis=dict(title="Copper price USD/t"),
-        yaxis2=dict(title="Shipment value USD", overlaying="y", side="right"),
-        legend=dict(orientation="h"),
+        yaxis2=dict(title="Net shipment value USD", overlaying="y", side="right"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
         margin=dict(l=35, r=35, t=70, b=50),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -600,7 +659,7 @@ def show_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
         y="Net shipment value USD",
         color="Scenario",
         text=scenarios["Net shipment value USD"].map(lambda value: money(value)),
-        color_discrete_sequence=px.colors.qualitative.Safe,
+        color_discrete_sequence=["#28785F", "#9F5B35", "#5B6775", "#A8433E", "#426E86"],
     )
     y_max = max(0.0, float(scenarios["Net shipment value USD"].max()))
     y_min = min(0.0, float(scenarios["Net shipment value USD"].min()))
@@ -612,7 +671,7 @@ def show_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
         hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
     )
     fig.update_layout(
-        title="Scenario Comparison",
+        title="Scenario Comparison: Net Shipment Value",
         height=620,
         showlegend=False,
         xaxis_title="",
@@ -623,6 +682,10 @@ def show_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
     fig.update_xaxes(tickangle=-30, automargin=True)
     fig.update_yaxes(tickformat=",.0f", range=[y_min - y_padding, y_max + y_padding])
     st.plotly_chart(fig, use_container_width=True)
+    section_note(
+        "Scenario bars start from the current sidebar case, then apply selected "
+        "market, charge, freight, and quality shocks."
+    )
     return scenarios
 
 
@@ -635,7 +698,7 @@ def show_tornado_chart(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
             x=tornado["Low impact USD"],
             orientation="h",
             name="Low case",
-            marker_color="#B44A3F",
+            marker_color="#A8433E",
             hovertemplate="%{y}<br>Impact: $%{x:,.0f}<extra></extra>",
         )
     )
@@ -645,25 +708,33 @@ def show_tornado_chart(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
             x=tornado["High impact USD"],
             orientation="h",
             name="High case",
-            marker_color="#2E7D5B",
+            marker_color="#28785F",
             hovertemplate="%{y}<br>Impact: $%{x:,.0f}<extra></extra>",
         )
     )
     fig.update_layout(
-        title="Value Driver Tornado",
+        title="Ranked Value Drivers",
         barmode="overlay",
         xaxis_title="Impact versus base case (USD)",
         yaxis_title="",
         height=520,
         margin=dict(l=35, r=35, t=70, b=40),
     )
-    fig.add_vline(x=0, line_width=1, line_color="#26323f")
+    fig.add_vline(x=0, line_width=1, line_color="#18212B")
     st.plotly_chart(fig, use_container_width=True)
+    section_note(
+        "The longest bars are the shocks with the biggest dollar effect versus "
+        "the current base case."
+    )
     return tornado
 
 
 def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
-    st.subheader("Risk and Commercial Sensitivities")
+    st.subheader("Quick Risk Briefing")
+    section_note(
+        "Use this page to identify which commercial terms deserve the most attention "
+        "before negotiating, hedging, or stress-testing a shipment."
+    )
     price_impact = copper_price_move_impact(assumptions)
     charge_impact = charge_move_impact(assumptions)
     driver, impact = largest_selected_risk_driver(assumptions)
@@ -672,7 +743,7 @@ def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**5% copper price move**")
+        st.markdown("**Copper price shock: +/-5%**")
         price_impact_display = price_impact.copy()
         price_impact_display["LME copper price USD/t"] = price_impact_display[
             "LME copper price USD/t"
@@ -685,7 +756,7 @@ def show_risk_section(assumptions: ConcentrateAssumptions) -> None:
         ].map("{:,.0f}".format)
         render_html_table(price_impact_display)
     with col2:
-        st.markdown("**TC and RC moves**")
+        st.markdown("**Smelter charge shocks**")
         charge_impact_display = charge_impact.copy()
         charge_impact_display["Net shipment value USD"] = charge_impact_display[
             "Net shipment value USD"
@@ -732,10 +803,15 @@ def show_detail_table(result) -> None:
     )
     detail_display = detail.copy()
     detail_display["Value"] = detail_display["Value"].map("{:,.2f}".format)
+    st.subheader("Calculation Detail")
+    section_note(
+        "Trace the physical conversion and commercial line items behind the KPIs."
+    )
     render_html_table(detail_display)
 
 
 def main() -> None:
+    apply_dashboard_style()
     page = st.sidebar.radio(
         "Dashboard page",
         ["Concentrate Valuation", "Copper Monte Carlo Risk"],
@@ -748,31 +824,27 @@ def main() -> None:
     result = calculate_valuation(assumptions)
     driver, impact = largest_selected_risk_driver(assumptions)
 
-    st.title("Copper Concentrate Trade Economics Dashboard")
+    st.title("Copper Concentrate Economics")
     st.write(
-        "A simplified educational tool for understanding copper concentrate "
-        "shipment economics across quality, payable metal, TC/RC, impurities, "
-        "precious-metal credits, logistics, financing, and market price risk."
+        "Price one shipment from wet tonnes through payable copper, by-product "
+        "credits, smelter charges, freight, impurity penalties, financing, and FX."
     )
 
     if result.dry_metric_tonnes <= 0:
         st.error("Dry metric tonnes are zero. Increase shipment size or reduce moisture.")
         return
 
-    st.caption(
-        f"Commercial read: this cargo values at {usd_text(result.net_value_usd)} "
-        f"or USD {result.value_per_dmt_usd:,.2f}/dmt. "
-        f"The selected risk move with the largest impact is {driver}."
+    st.success(
+        f"Commercial read: net value is {usd_text(result.net_value_usd)} "
+        f"({result.value_per_dmt_usd:,.2f} USD/dmt). "
+        f"The largest quick shock is {driver}, with an impact of {money(impact)}."
     )
     show_kpis(result, driver, impact)
 
     st.info(
-        "The sidebar defines the base cargo and base commercial terms. "
-        "Value Bridge and Risk View use that base case directly. "
-        "Sensitivity lets you choose two drivers and revalue the base cargo across them. "
-        "Scenarios start from the same base case and shock selected assumptions. "
-        "Market Data keeps the selected cargo quality constant, then revalues it "
-        "against illustrative market terms by date."
+        "Workflow: set the cargo case in the sidebar, read the headline economics, "
+        "then move through the tabs from value bridge to sensitivities, scenarios, "
+        "market revaluation, and risk briefing."
     )
 
     st.caption(

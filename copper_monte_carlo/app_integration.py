@@ -100,31 +100,7 @@ def _render_html_table(df: pd.DataFrame) -> None:
     """Render tables without Streamlit's pyarrow-backed dataframe element."""
 
     st.markdown(
-        """
-        <style>
-        .mc-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-        .mc-table th {
-            background-color: #26323f;
-            color: #ffffff;
-            text-align: left;
-            padding: 0.55rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.16);
-        }
-        .mc-table td {
-            padding: 0.5rem 0.55rem;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.28);
-            vertical-align: top;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        df.to_html(index=False, escape=True, classes="mc-table"),
+        df.to_html(index=False, escape=True, classes="dashboard-table"),
         unsafe_allow_html=True,
     )
 
@@ -133,12 +109,12 @@ def render_monte_carlo_page() -> None:
     """Render the Monte Carlo page inside the existing Streamlit app."""
 
     assumptions = load_default_assumptions()
-    st.title("Copper Monte Carlo Risk")
+    st.title("Copper Market Risk Simulation")
     st.warning(assumptions["metadata"]["data_warning"])
     st.info(
-        "Use this page in three layers: choose the physical trade mode, choose "
-        "a market scenario, then adjust the numeric assumptions. The margin "
-        "charts show revalued path outcomes, not realized accounting P&L."
+        "Workflow: choose the physical trade structure, select a market scenario, "
+        "then adjust the assumptions. The charts show simulated path outcomes and "
+        "revalued margins, not realized accounting P&L."
     )
 
     scenario_names = list(assumptions["scenarios"].keys())
@@ -147,7 +123,7 @@ def render_monte_carlo_page() -> None:
         for name in scenario_names
     }
     with st.sidebar:
-        st.header("1. Trade Structure")
+        st.header("Trade Structure")
         trade_mode_label = st.selectbox(
             "Trade mode",
             list(TRADE_MODE_LABELS.keys()),
@@ -156,7 +132,7 @@ def render_monte_carlo_page() -> None:
         trade_mode = TRADE_MODE_LABELS[trade_mode_label]
         st.caption(TRADE_MODE_DESCRIPTIONS[trade_mode])
 
-        st.header("2. Market Scenario")
+        st.header("Market Scenario")
         scenario_label = st.selectbox(
             "Scenario preset",
             list(scenario_options.keys()),
@@ -168,15 +144,15 @@ def render_monte_carlo_page() -> None:
             "volatility, TC/RC, freight, hedge ratio, or financing rate."
         )
 
-        st.header("3. Simulation Controls")
-        n_simulations = st.number_input("Number of simulations", 100, 100000, 10000, 500)
+        st.header("Simulation Controls")
+        n_simulations = st.number_input("Simulation paths", 100, 100000, 10000, 500)
         horizon_months = st.selectbox("Horizon months", [12, 24, 36], index=1)
         random_seed = st.number_input("Random seed", 0, 999999, 42, 1)
 
-        with st.expander("Market assumptions", expanded=True):
-            initial_price = st.number_input("Initial copper price USD/t", 0.0, 50000.0, 12000.0, 50.0)
-            annual_drift = st.number_input("Annual drift", -1.0, 1.0, 0.03, 0.01, format="%.4f")
-            annual_volatility = st.number_input("Annual volatility", 0.0, 2.0, 0.24, 0.01, format="%.4f")
+        with st.expander("1. Market Path Assumptions", expanded=True):
+            initial_price = st.number_input("Initial copper price (USD/t)", 0.0, 50000.0, 12000.0, 50.0)
+            annual_drift = st.number_input("Annual copper drift", -1.0, 1.0, 0.03, 0.01, format="%.4f")
+            annual_volatility = st.number_input("Annual copper volatility", 0.0, 2.0, 0.24, 0.01, format="%.4f")
             tc_initial = st.number_input("Initial TC USD/dmt", -200.0, 300.0, -40.0, 1.0)
             tc_mean = st.number_input("Long-term TC mean USD/dmt", -200.0, 300.0, 45.0, 1.0)
             tc_vol = st.number_input("TC monthly volatility USD/dmt", 0.0, 100.0, 12.0, 1.0)
@@ -186,19 +162,19 @@ def render_monte_carlo_page() -> None:
             freight_initial = st.number_input("Freight USD/wmt", 0.0, 250.0, 45.0, 1.0)
             freight_vol = st.number_input("Freight monthly volatility USD/wmt", 0.0, 100.0, 8.0, 1.0)
 
-        with st.expander("Concentrate quality"):
+        with st.expander("2. Concentrate Quality"):
             wet_tonnes = st.number_input("Wet tonnes", 0.0, 1000000.0, 10000.0, 100.0)
-            moisture = st.slider("Moisture", 0.0, 0.20, 0.08, 0.005)
-            copper_grade = st.slider("Copper grade", 0.0, 0.60, 0.26, 0.005)
-            payable = st.slider("Payable copper", 0.0, 1.0, 0.965, 0.005)
+            moisture = st.slider("Moisture fraction", 0.0, 0.20, 0.08, 0.005)
+            copper_grade = st.slider("Copper grade fraction", 0.0, 0.60, 0.26, 0.005)
+            payable = st.slider("Payable copper fraction", 0.0, 1.0, 0.965, 0.005)
 
-        with st.expander("Logistics, financing and hedging"):
+        with st.expander("3. Logistics, Financing and Hedging"):
             storage_duration = st.number_input("Storage duration months", 0.0, 24.0, 2.0, 0.5)
-            financing_rate = st.number_input("All-in financing rate", 0.0, 1.0, 0.07, 0.005, format="%.4f")
+            financing_rate = st.number_input("All-in financing rate fraction", 0.0, 1.0, 0.07, 0.005, format="%.4f")
             hedge_enabled = st.checkbox("Hedge enabled", True)
             hedge_ratio = st.slider("Hedge ratio", 0.0, 1.0, 0.80, 0.05)
 
-        with st.expander("Trade-mode economics"):
+        with st.expander("4. Trade-Mode Economics"):
             purchase_percentage = st.number_input(
                 "Purchase payable value percentage",
                 0.0,
@@ -277,7 +253,7 @@ def render_monte_carlo_page() -> None:
     result = run_monte_carlo(config)
     kpis = result.risk_summary.set_index("Metric")["Value"]
     cols = st.columns(4)
-    cols[0].metric("Expected final copper", f"USD {kpis['Expected final copper price']:,.0f}/t")
+    cols[0].metric("Expected final copper price", f"USD {kpis['Expected final copper price']:,.0f}/t")
     cols[1].metric("Expected margin", f"USD {kpis['Expected margin']:,.0f}")
     cols[2].metric("Probability of loss", f"{kpis['Probability of loss']:.1%}")
     cols[3].metric("95% VaR", f"USD {kpis['95% VaR']:,.0f}")
@@ -289,7 +265,7 @@ def render_monte_carlo_page() -> None:
     tabs = st.tabs(
         [
             "Setup",
-            "Price Paths",
+            "Copper Price Paths",
             "Margin Risk",
             "Risk Summary",
             "Export",
@@ -297,6 +273,10 @@ def render_monte_carlo_page() -> None:
     )
     with tabs[0]:
         st.subheader("Simulation Setup")
+        st.caption(
+            "This summarizes the active model case after scenario presets have "
+            "been applied."
+        )
         setup = pd.DataFrame(
             [
                 ("Trade mode", trade_mode_label),
@@ -310,17 +290,22 @@ def render_monte_carlo_page() -> None:
             columns=["Item", "Selected value"],
         )
         _render_html_table(setup)
-        st.subheader("Input Transparency")
+        st.subheader("Input Sources")
+        st.caption("Source notes for the default assumptions used by this page.")
         _render_html_table(_metadata_table(assumptions))
 
     with tabs[1]:
+        st.caption(
+            "Sampled paths show individual simulated copper outcomes; percentile "
+            "charts summarize the central range across all paths."
+        )
         st.plotly_chart(copper_spider_plot(result), use_container_width=True)
         st.plotly_chart(copper_fan_chart(result), use_container_width=True)
         st.plotly_chart(
             final_distribution(
                 result.copper_price_paths[:, -1],
-                "Final Copper Price Distribution",
-                "Copper price USD/t",
+                "Final-Month Copper Price Distribution",
+                "Copper price (USD/t)",
             ),
             use_container_width=True,
         )
@@ -337,8 +322,8 @@ def render_monte_carlo_page() -> None:
         st.plotly_chart(
             final_distribution(
                 result.margin_paths[:, -1],
-                "Final Margin Distribution",
-                "Margin USD",
+                "Final-Month Margin Distribution",
+                "Margin (USD)",
             ),
             use_container_width=True,
         )

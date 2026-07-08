@@ -8,14 +8,14 @@ import plotly.graph_objects as go
 from copper_monte_carlo.simulation_engine import SimulationResult
 
 
-DARK_LAYOUT = {
-    "template": "plotly_dark",
-    "plot_bgcolor": "#111827",
-    "paper_bgcolor": "#111827",
-    "font": {"color": "#F3F4F6"},
-    "xaxis": {"gridcolor": "rgba(243, 244, 246, 0.16)", "zerolinecolor": "#9CA3AF"},
-    "yaxis": {"gridcolor": "rgba(243, 244, 246, 0.16)", "zerolinecolor": "#9CA3AF"},
-    "legend": {"font": {"color": "#F3F4F6"}},
+CHART_LAYOUT = {
+    "template": "plotly_white",
+    "plot_bgcolor": "#FFFFFF",
+    "paper_bgcolor": "#FFFFFF",
+    "font": {"color": "#18212B"},
+    "xaxis": {"gridcolor": "rgba(24, 33, 43, 0.12)", "zerolinecolor": "#5B6775"},
+    "yaxis": {"gridcolor": "rgba(24, 33, 43, 0.12)", "zerolinecolor": "#5B6775"},
+    "legend": {"font": {"color": "#18212B"}, "orientation": "h"},
 }
 
 
@@ -31,7 +31,7 @@ def _fan_chart(fan, title: str, yaxis_title: str) -> go.Figure:
                 fill="tonexty",
                 name="P5-P95",
                 line=dict(width=0),
-                fillcolor="rgba(248, 113, 113, 0.24)",
+                fillcolor="rgba(168, 67, 62, 0.18)",
             )
         )
     if {"p10", "p90"}.issubset(fan.columns):
@@ -43,7 +43,7 @@ def _fan_chart(fan, title: str, yaxis_title: str) -> go.Figure:
                 fill="tonexty",
                 name="P10-P90",
                 line=dict(width=0),
-                fillcolor="rgba(45, 212, 191, 0.26)",
+                fillcolor="rgba(40, 120, 95, 0.20)",
             )
         )
     median_col = "p50" if "p50" in fan.columns else fan.columns[len(fan.columns) // 2]
@@ -53,7 +53,7 @@ def _fan_chart(fan, title: str, yaxis_title: str) -> go.Figure:
             y=fan[median_col],
             mode="lines",
             name="Median",
-            line=dict(color="#FACC15", width=3),
+            line=dict(color="#9F5B35", width=3),
         )
     )
     fig.update_layout(
@@ -61,7 +61,7 @@ def _fan_chart(fan, title: str, yaxis_title: str) -> go.Figure:
         xaxis_title="Month",
         yaxis_title=yaxis_title,
         height=520,
-        **DARK_LAYOUT,
+        **CHART_LAYOUT,
     )
     return fig
 
@@ -76,10 +76,10 @@ def copper_spider_plot(result: SimulationResult, sample_size: int = 90) -> go.Fi
     months = np.arange(paths.shape[1])
     fig = go.Figure()
     path_colors = [
-        "rgba(96, 165, 250, 0.42)",
-        "rgba(45, 212, 191, 0.36)",
-        "rgba(251, 146, 60, 0.34)",
-        "rgba(209, 213, 219, 0.28)",
+        "rgba(66, 110, 134, 0.34)",
+        "rgba(40, 120, 95, 0.30)",
+        "rgba(159, 91, 53, 0.28)",
+        "rgba(91, 103, 117, 0.26)",
     ]
     for idx in sample:
         color = path_colors[int(idx) % len(path_colors)]
@@ -93,7 +93,7 @@ def copper_spider_plot(result: SimulationResult, sample_size: int = 90) -> go.Fi
                 hoverinfo="skip",
             )
         )
-    for percentile, color in [(5, "#F87171"), (95, "#F87171")]:
+    for percentile, color in [(5, "#A8433E"), (95, "#A8433E")]:
         fig.add_trace(
             go.Scatter(
                 x=months,
@@ -109,25 +109,25 @@ def copper_spider_plot(result: SimulationResult, sample_size: int = 90) -> go.Fi
             y=np.median(paths, axis=0),
             mode="lines",
             name="Median",
-            line=dict(color="#FACC15", width=3),
+            line=dict(color="#9F5B35", width=3),
         )
     )
     fig.update_layout(
-        title="Copper Price Spider Plot",
+        title="Sampled Copper Price Paths",
         xaxis_title="Month",
-        yaxis_title="Copper price USD/t",
+        yaxis_title="Copper price (USD/t)",
         height=540,
-        **DARK_LAYOUT,
+        **CHART_LAYOUT,
     )
     return fig
 
 
 def copper_fan_chart(result: SimulationResult) -> go.Figure:
-    return _fan_chart(result.price_fan, "Copper Price Fan Chart", "Copper price USD/t")
+    return _fan_chart(result.price_fan, "Copper Price Percentile Fan", "Copper price (USD/t)")
 
 
 def margin_fan_chart(result: SimulationResult) -> go.Figure:
-    return _fan_chart(result.margin_fan, "Physical Trade Margin Fan Chart", "Margin USD")
+    return _fan_chart(result.margin_fan, "Trade Margin Percentile Fan", "Margin (USD)")
 
 
 def final_distribution(values, title: str, xaxis_title: str) -> go.Figure:
@@ -136,7 +136,7 @@ def final_distribution(values, title: str, xaxis_title: str) -> go.Figure:
         go.Histogram(
             x=values,
             nbinsx=60,
-            marker_color="#2DD4BF",
+            marker_color="#28785F",
             name="Distribution",
         )
     )
@@ -146,7 +146,7 @@ def final_distribution(values, title: str, xaxis_title: str) -> go.Figure:
         "P5": np.percentile(values, 5),
         "P95": np.percentile(values, 95),
     }
-    colors = {"Mean": "#FACC15", "Median": "#2DD4BF", "P5": "#F87171", "P95": "#F87171"}
+    colors = {"Mean": "#9F5B35", "Median": "#28785F", "P5": "#A8433E", "P95": "#A8433E"}
     for label, value in markers.items():
         fig.add_vline(
             x=float(value),
@@ -160,6 +160,6 @@ def final_distribution(values, title: str, xaxis_title: str) -> go.Figure:
         xaxis_title=xaxis_title,
         yaxis_title="Count",
         height=500,
-        **DARK_LAYOUT,
+        **CHART_LAYOUT,
     )
     return fig
