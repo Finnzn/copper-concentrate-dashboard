@@ -1,0 +1,254 @@
+simulation_control:
+  n_simulations: 10000
+  horizon_months: 24
+  random_seed: 42
+  simulation_frequency: monthly
+  confidence_levels: [0.05, 0.10, 0.50, 0.90, 0.95]
+  start_date: today
+  base_currency: USD
+  output_currency: USD
+  inflation_assumption_annual: 0.025
+  scenario_name: Base fallback case
+
+trade_model:
+  trade_mode: concentrate_merchant
+  purchase_payable_value_percentage: 0.98
+  refined_copper_purchase_premium_usd_per_tonne: 50
+  refined_copper_sale_premium_usd_per_tonne: 100
+  smelter_recovery_rate: 0.985
+  smelting_refining_cost_usd_per_dmt: 120
+
+copper_price:
+  initial_copper_price_usd_per_tonne: 12000
+  copper_price_unit: USD per metric tonne
+  annual_drift: 0.03
+  annual_volatility: 0.24
+  use_historical_volatility: true
+  lookback_window_months: 60
+  min_price_floor: 4000
+  max_price_cap:
+  jump_probability: 0.03
+  jump_mean: 0.00
+  jump_volatility: 0.08
+
+basis:
+  initial_basis_spread_usd_per_tonne: 50
+  basis_mean_reversion_level: 0
+  basis_mean_reversion_speed: 0.35
+  basis_volatility: 120
+  contango_backwardation_indicator: mild_contango
+  prompt_to_3m_spread_usd_per_tonne: 30
+  physical_premium_discount_usd_per_tonne: 75
+  regional_premium_usd_per_tonne: 75
+  delivery_month: 3
+  hedge_tenor_months: 3
+  basis_risk_enabled: true
+
+tcrc:
+  treatment_charge_usd_per_dmt_concentrate: -40
+  refining_charge_usd_per_lb_payable_copper: -0.04
+  tc_mean_reversion_level: 45
+  tc_mean_reversion_speed: 0.12
+  tc_volatility: 12
+  rc_mean_reversion_level: 0.045
+  rc_mean_reversion_speed: 0.12
+  rc_volatility: 0.012
+  tc_floor: -100
+  tc_cap: 150
+  rc_floor: -0.10
+  rc_cap: 0.15
+  annual_benchmark_tc: 0
+  spot_tc_discount_or_premium: -40
+  smelter_capacity_pressure_indicator: 0.75
+  concentrate_supply_tightness_indicator: 0.80
+  allow_negative_tcrc: true
+
+concentrate_quality:
+  wet_metric_tonnes: 10000
+  moisture_percentage: 0.08
+  copper_grade_percentage: 0.26
+  payable_copper_percentage: 0.965
+  payable_copper_deduction_percentage: 0.01
+  gold_grade_g_per_tonne: 1.0
+  silver_grade_g_per_tonne: 80
+  gold_payability_percentage: 0.95
+  silver_payability_percentage: 0.90
+  gold_price_usd_per_oz: 3300
+  silver_price_usd_per_oz: 40
+  arsenic_percentage: 0.15
+  antimony_percentage: 0.03
+  bismuth_percentage: 0.02
+  lead_percentage: 1.0
+  zinc_percentage: 2.0
+  mercury_ppm: 1.0
+  fluorine_ppm: 200
+  chlorine_ppm: 100
+  minimum_payable_copper: 0.955
+  concentrate_lot_size: 10000
+  assay_uncertainty_enabled: true
+  assay_error_std:
+    copper_grade_abs_pct_points: 0.002
+    moisture_abs_pct_points: 0.003
+    gold_grade_relative_std: 0.05
+    silver_grade_relative_std: 0.05
+    impurity_relative_std: 0.10
+
+penalty_thresholds:
+  arsenic_percentage: 0.20
+  antimony_percentage: 0.10
+  bismuth_percentage: 0.05
+  lead_percentage: 3.0
+  zinc_percentage: 4.0
+  mercury_ppm: 5.0
+  fluorine_ppm: 300
+  chlorine_ppm: 300
+
+penalty_rates:
+  arsenic_usd_per_dmt_per_0_01pct_above_threshold: 5.0
+  antimony_usd_per_dmt_per_0_01pct_above_threshold: 2.0
+  bismuth_usd_per_dmt_per_0_01pct_above_threshold: 3.0
+  lead_usd_per_dmt_per_1pct_above_threshold: 1.5
+  zinc_usd_per_dmt_per_1pct_above_threshold: 1.5
+  mercury_usd_per_dmt_per_ppm_above_threshold: 2.0
+  fluorine_usd_per_dmt_per_100ppm_above_threshold: 2.0
+  chlorine_usd_per_dmt_per_100ppm_above_threshold: 2.0
+
+logistics:
+  origin_mine_or_port: Generic South America Pacific port
+  destination_smelter_or_port: Generic East Asia smelter
+  freight_usd_per_wmt: 45
+  freight_mean_reversion_level: 40
+  freight_mean_reversion_speed: 0.20
+  freight_volatility: 8
+  freight_jump_probability: 0.04
+  freight_jump_size_mean: 15
+  freight_jump_size_volatility: 10
+  shipping_duration_days: 35
+  laytime_days: 5
+  demurrage_usd_per_day: 25000
+  demurrage_probability: 0.15
+  demurrage_days_min: 0
+  demurrage_days_mode: 3
+  demurrage_days_max: 10
+  port_handling_cost_usd_per_tonne: 8
+  inland_transport_cost_usd_per_tonne: 15
+  insurance_rate_percentage_of_cargo_value: 0.0025
+  loss_rate_percentage: 0.002
+  moisture_loss_adjustment: 0.00
+
+storage_inventory:
+  storage_cost_usd_per_tonne_per_month: 6
+  warehouse_rent_usd_per_tonne_per_day: 0.20
+  storage_duration_months: 2
+  inventory_holding_period_months: 2
+  inventory_loss_percentage: 0.001
+  inventory_signal_enabled: false
+  inventory_price_impact_coefficient: -0.05
+
+financing:
+  purchase_payment_timing_days: 5
+  sale_payment_timing_days: 45
+  usd_interest_rate: 0.045
+  credit_spread: 0.025
+  financing_cost_method: simple
+  margin_requirement_percentage_for_hedge: 0.08
+  credit_limit: 50000000
+  counterparty_default_probability: 0.005
+  counterparty_loss_given_default: 0.60
+
+fx:
+  usd_chf_rate: 0.90
+  usd_eur_rate: 0.92
+  local_currency: USD
+  fx_volatility: 0.08
+  fx_drift: 0.00
+  fx_correlation_with_copper: -0.25
+  fx_hedge_ratio: 0.00
+  fx_basis_spread: 0.00
+
+hedging:
+  hedge_enabled: true
+  hedge_instrument: COMEX futures
+  hedge_ratio: 0.80
+  hedge_entry_month: 0
+  hedge_exit_month: 3
+  futures_contract_size: 25000
+  hedge_transaction_cost: 20
+  hedge_slippage: 10
+  hedge_basis_risk: 120
+  margin_call_liquidity_stress_enabled: true
+
+revenue:
+  sale_product: payable metal equivalent
+  sale_price_reference: monthly average spot
+  quotation_period_months: 1
+  qp_pricing_rule: M+1 monthly average
+  quotational_period_lag_months: 1
+  buyer_premium_discount: 0
+  cathode_premium_usd_per_tonne: 100
+
+risk:
+  loss_threshold_usd: 0
+  high_copper_threshold_usd_per_tonne: 14000
+  low_copper_threshold_usd_per_tonne: 9000
+
+correlation:
+  variables: [copper_price, tc, rc, freight, fx, basis]
+  matrix:
+    - [1.00, -0.35, -0.35, 0.20, -0.25, 0.20]
+    - [-0.35, 1.00, 0.85, -0.10, 0.05, -0.15]
+    - [-0.35, 0.85, 1.00, -0.10, 0.05, -0.15]
+    - [0.20, -0.10, -0.10, 1.00, -0.05, 0.10]
+    - [-0.25, 0.05, 0.05, -0.05, 1.00, -0.05]
+    - [0.20, -0.15, -0.15, 0.10, -0.05, 1.00]
+
+scenarios:
+  base_case:
+    scenario_name: Base fallback case
+  bull_copper_tight_concentrate:
+    copper_initial_price: 12000
+    copper_annual_drift: 0.08
+    copper_annual_volatility: 0.30
+    tc_initial: -60
+    rc_initial: -0.06
+    freight_initial: 55
+    hedge_ratio: 0.50
+    financing_rate: 0.075
+  bear_copper_weak_demand:
+    copper_initial_price: 12000
+    copper_annual_drift: -0.06
+    copper_annual_volatility: 0.28
+    tc_initial: 20
+    rc_initial: 0.02
+    freight_initial: 35
+    hedge_ratio: 1.00
+    financing_rate: 0.065
+  high_freight_shock:
+    copper_initial_price: 12000
+    copper_annual_drift: 0.02
+    copper_annual_volatility: 0.26
+    tc_initial: -40
+    rc_initial: -0.04
+    freight_initial: 75
+    freight_jump_probability: 0.10
+    freight_jump_size_mean: 25
+    hedge_ratio: 0.80
+    financing_rate: 0.075
+  negative_tcrc_stress:
+    copper_initial_price: 12000
+    copper_annual_drift: 0.04
+    copper_annual_volatility: 0.25
+    tc_initial: -80
+    rc_initial: -0.08
+    tc_mean_reversion_level: 20
+    rc_mean_reversion_level: 0.02
+    hedge_ratio: 0.80
+  unhedged_case:
+    hedge_enabled: false
+    hedge_ratio: 0.00
+  half_hedged_case:
+    hedge_enabled: true
+    hedge_ratio: 0.50
+  fully_hedged_case:
+    hedge_enabled: true
+    hedge_ratio: 1.00

@@ -17,6 +17,7 @@ from src.risk import (
 )
 from src.scenarios import build_scenarios
 from src.valuation import ConcentrateAssumptions, calculate_valuation, valuation_bridge
+from copper_monte_carlo.app_integration import render_monte_carlo_page
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -28,18 +29,18 @@ DEFAULT_INPUTS = {
     "copper_grade_percentage": 26.0,
     "payable_copper_percentage": 96.5,
     "copper_payable_deduction_unit_percentage": 1.0,
-    "lme_copper_price_usd_per_tonne": 9_500.0,
-    "tc_usd_per_dmt": 80.0,
-    "rc_cents_per_lb": 8.0,
-    "freight_usd_per_dmt": 55.0,
+    "lme_copper_price_usd_per_tonne": 12_000.0,
+    "tc_usd_per_dmt": -40.0,
+    "rc_cents_per_lb": -4.0,
+    "freight_usd_per_dmt": 49.0,
     "impurity_penalty_usd_per_dmt": 12.0,
-    "gold_grade_g_per_dmt": 1.2,
-    "gold_payable_percentage": 90.0,
-    "gold_price_usd_per_oz": 2_300.0,
+    "gold_grade_g_per_dmt": 1.0,
+    "gold_payable_percentage": 95.0,
+    "gold_price_usd_per_oz": 3_300.0,
     "gold_refining_charge_usd_per_oz": 8.0,
-    "silver_grade_g_per_dmt": 35.0,
+    "silver_grade_g_per_dmt": 80.0,
     "silver_payable_percentage": 90.0,
-    "silver_price_usd_per_oz": 28.0,
+    "silver_price_usd_per_oz": 40.0,
     "silver_refining_charge_usd_per_oz": 0.45,
     "other_byproduct_credit_usd_per_dmt": 0.0,
     "arsenic_ppm": 1_200.0,
@@ -240,13 +241,13 @@ def build_assumptions_from_sidebar() -> ConcentrateAssumptions:
         )
         tc_usd_per_dmt = st.number_input(
             "Treatment charge, TC (USD/dmt)",
-            min_value=0.0,
+            min_value=-200.0,
             step=1.0,
             key="tc_usd_per_dmt",
         )
         rc_cents_per_lb = st.number_input(
             "Refining charge, RC (US cents/lb)",
-            min_value=0.0,
+            min_value=-20.0,
             step=0.25,
             key="rc_cents_per_lb",
         )
@@ -726,6 +727,14 @@ def show_detail_table(result) -> None:
 
 
 def main() -> None:
+    page = st.sidebar.radio(
+        "Dashboard page",
+        ["Concentrate Valuation", "Copper Monte Carlo Risk"],
+    )
+    if page == "Copper Monte Carlo Risk":
+        render_monte_carlo_page()
+        return
+
     assumptions = build_assumptions_from_sidebar()
     result = calculate_valuation(assumptions)
     driver, impact = largest_selected_risk_driver(assumptions)

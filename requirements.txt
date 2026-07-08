@@ -4,3 +4,4 @@ numpy>=1.26
 plotly>=5.22
 pytest>=8.0
 matplotlib>=3.8
+PyYAML>=6.0

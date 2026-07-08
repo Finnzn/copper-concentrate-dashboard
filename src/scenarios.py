@@ -26,8 +26,8 @@ def build_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
         ),
         "Lower TC/RC market": replace(
             assumptions,
-            tc_usd_per_dmt=max(0.0, assumptions.tc_usd_per_dmt - 15),
-            rc_cents_per_lb=max(0.0, assumptions.rc_cents_per_lb - 3),
+            tc_usd_per_dmt=assumptions.tc_usd_per_dmt - 15,
+            rc_cents_per_lb=assumptions.rc_cents_per_lb - 3,
         ),
         "Higher freight/logistics cost": replace(
             assumptions,

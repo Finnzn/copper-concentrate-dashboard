@@ -67,6 +67,16 @@ SENSITIVITY_VARIABLES = {
     },
 }
 
+NON_NEGATIVE_SENSITIVITY_FIELDS = {
+    "lme_copper_price_usd_per_tonne",
+    "freight_usd_per_dmt",
+    "copper_grade_percentage",
+    "moisture_percentage",
+    "arsenic_ppm",
+    "gold_price_usd_per_oz",
+    "annual_financing_rate_percentage",
+}
+
 
 def sensitivity_variable_names() -> list[str]:
     """Return display names available for two-way sensitivity analysis."""
@@ -90,7 +100,8 @@ def sensitivity_axis_values(
         low = base_value - range_value
         high = base_value + range_value
 
-    low = max(0.0, low)
+    if variable["field"] in NON_NEGATIVE_SENSITIVITY_FIELDS:
+        low = max(0.0, low)
     return variable["label"], np.linspace(low, high, steps)
 
 
@@ -136,9 +147,7 @@ def charge_move_impact(
             "TC decrease",
             replace(
                 assumptions,
-                tc_usd_per_dmt=max(
-                    0.0, assumptions.tc_usd_per_dmt - tc_move_usd_per_dmt
-                ),
+                tc_usd_per_dmt=assumptions.tc_usd_per_dmt - tc_move_usd_per_dmt,
             ),
         ),
         (
@@ -152,9 +161,7 @@ def charge_move_impact(
             "RC decrease",
             replace(
                 assumptions,
-                rc_cents_per_lb=max(
-                    0.0, assumptions.rc_cents_per_lb - rc_move_cents_per_lb
-                ),
+                rc_cents_per_lb=assumptions.rc_cents_per_lb - rc_move_cents_per_lb,
             ),
         ),
         (
@@ -194,7 +201,7 @@ def sensitivity_heatmap(
     price_high = assumptions.lme_copper_price_usd_per_tonne * (
         1 + price_range_percentage / 100
     )
-    tc_low = max(0.0, assumptions.tc_usd_per_dmt - tc_range_usd_per_dmt)
+    tc_low = assumptions.tc_usd_per_dmt - tc_range_usd_per_dmt
     tc_high = assumptions.tc_usd_per_dmt + tc_range_usd_per_dmt
 
     prices = np.linspace(price_low, price_high, price_steps)
@@ -311,16 +318,14 @@ def tornado_impacts(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
         (
             "TC +/-10 USD/dmt",
             replace(
-                assumptions,
-                tc_usd_per_dmt=max(0.0, assumptions.tc_usd_per_dmt - 10.0),
+                assumptions, tc_usd_per_dmt=assumptions.tc_usd_per_dmt - 10.0
             ),
             replace(assumptions, tc_usd_per_dmt=assumptions.tc_usd_per_dmt + 10.0),
         ),
         (
             "RC +/-2 USc/lb",
             replace(
-                assumptions,
-                rc_cents_per_lb=max(0.0, assumptions.rc_cents_per_lb - 2.0),
+                assumptions, rc_cents_per_lb=assumptions.rc_cents_per_lb - 2.0
             ),
             replace(assumptions, rc_cents_per_lb=assumptions.rc_cents_per_lb + 2.0),
         ),
