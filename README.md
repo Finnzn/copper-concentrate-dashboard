@@ -141,7 +141,7 @@ The project now includes a path-based Monte Carlo package in `copper_monte_carlo
 It simulates monthly paths for copper price, TC, RC, freight, FX, basis, and physical
 trade margin over a configurable 12, 24, or 36 month horizon.
 
-The first working version implements Phase 1 and Phase 2:
+The first working version implements:
 
 - Copper price paths using geometric Brownian motion with optional jump shocks.
 - TC and RC paths using mean-reverting processes.
@@ -436,7 +436,7 @@ logic is intentionally left small so Phase 4 can be added cleanly.
 
 ### Current Limitations
 
-Phase 3 to Phase 5 are structured but not fully implemented. Scenario comparison,
+Scenario comparison,
 deeper basis-risk logic, manual futures curves, empirical calibration, and chart
 PNG downloads are natural next steps. TC/RC and freight defaults are placeholder
 estimates and should be replaced with user data for serious analysis.
