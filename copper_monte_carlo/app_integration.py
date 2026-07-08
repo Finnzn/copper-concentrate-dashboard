@@ -46,6 +46,19 @@ TRADE_MODE_DESCRIPTIONS = {
     ),
 }
 
+SCENARIO_LABELS = {
+    "base_case": "Base case",
+    "bull_copper_tight_concentrate": "Bull copper / tight concentrate",
+    "bear_copper_weak_demand": "Bear copper / weak demand",
+    "high_freight_shock": "High freight shock",
+    "negative_tcrc_stress": "Negative TC/RC stress",
+    "unhedged_case": "Unhedged case",
+    "half_hedged_case": "50% hedged case",
+    "fully_hedged_case": "Fully hedged case",
+    "dirty_concentrate_case": "Dirty concentrate case",
+    "clean_concentrate_case": "Clean concentrate case",
+}
+
 
 def _metadata_table(assumptions: dict) -> pd.DataFrame:
     rows = []
@@ -83,16 +96,58 @@ def _static_values_table(values: dict[str, float]) -> pd.DataFrame:
     )
 
 
+def _render_html_table(df: pd.DataFrame) -> None:
+    """Render tables without Streamlit's pyarrow-backed dataframe element."""
+
+    st.markdown(
+        """
+        <style>
+        .mc-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .mc-table th {
+            background-color: #26323f;
+            color: #ffffff;
+            text-align: left;
+            padding: 0.55rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .mc-table td {
+            padding: 0.5rem 0.55rem;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.28);
+            vertical-align: top;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        df.to_html(index=False, escape=True, classes="mc-table"),
+        unsafe_allow_html=True,
+    )
+
+
 def render_monte_carlo_page() -> None:
     """Render the Monte Carlo page inside the existing Streamlit app."""
 
     assumptions = load_default_assumptions()
     st.title("Copper Monte Carlo Risk")
     st.warning(assumptions["metadata"]["data_warning"])
+    st.info(
+        "Use this page in three layers: choose the physical trade mode, choose "
+        "a market scenario, then adjust the numeric assumptions. The margin "
+        "charts show revalued path outcomes, not realized accounting P&L."
+    )
 
     scenario_names = list(assumptions["scenarios"].keys())
+    scenario_options = {
+        SCENARIO_LABELS.get(name, name.replace("_", " ").title()): name
+        for name in scenario_names
+    }
     with st.sidebar:
-        st.header("Monte Carlo Setup")
+        st.header("1. Trade Structure")
         trade_mode_label = st.selectbox(
             "Trade mode",
             list(TRADE_MODE_LABELS.keys()),
@@ -100,7 +155,20 @@ def render_monte_carlo_page() -> None:
         )
         trade_mode = TRADE_MODE_LABELS[trade_mode_label]
         st.caption(TRADE_MODE_DESCRIPTIONS[trade_mode])
-        scenario = st.selectbox("Scenario", scenario_names, index=0)
+
+        st.header("2. Market Scenario")
+        scenario_label = st.selectbox(
+            "Scenario preset",
+            list(scenario_options.keys()),
+            index=0,
+        )
+        scenario = scenario_options[scenario_label]
+        st.caption(
+            "Scenario presets override selected market assumptions such as drift, "
+            "volatility, TC/RC, freight, hedge ratio, or financing rate."
+        )
+
+        st.header("3. Simulation Controls")
         n_simulations = st.number_input("Number of simulations", 100, 100000, 10000, 500)
         horizon_months = st.selectbox("Horizon months", [12, 24, 36], index=1)
         random_seed = st.number_input("Random seed", 0, 999999, 42, 1)
@@ -213,13 +281,39 @@ def render_monte_carlo_page() -> None:
     cols[1].metric("Expected margin", f"USD {kpis['Expected margin']:,.0f}")
     cols[2].metric("Probability of loss", f"{kpis['Probability of loss']:.1%}")
     cols[3].metric("95% VaR", f"USD {kpis['95% VaR']:,.0f}")
-    st.caption(f"Active trade mode: {trade_mode_label}. {TRADE_MODE_DESCRIPTIONS[trade_mode]}")
+    st.caption(
+        f"Trade mode: {trade_mode_label}. Market scenario: {scenario_label}. "
+        f"{TRADE_MODE_DESCRIPTIONS[trade_mode]}"
+    )
 
-    st.subheader("Input Transparency")
-    st.dataframe(_metadata_table(assumptions), use_container_width=True, hide_index=True)
-
-    tabs = st.tabs(["Price Paths", "Margin Risk", "Risk Summary", "Export"])
+    tabs = st.tabs(
+        [
+            "Setup",
+            "Price Paths",
+            "Margin Risk",
+            "Risk Summary",
+            "Export",
+        ]
+    )
     with tabs[0]:
+        st.subheader("Simulation Setup")
+        setup = pd.DataFrame(
+            [
+                ("Trade mode", trade_mode_label),
+                ("Market scenario", scenario_label),
+                ("Simulations", f"{int(n_simulations):,}"),
+                ("Horizon", f"{int(horizon_months)} months"),
+                ("Random seed", str(int(random_seed))),
+                ("Hedge", "Enabled" if config.hedge_enabled else "Disabled"),
+                ("Hedge ratio", f"{config.hedge_ratio:.0%}"),
+            ],
+            columns=["Item", "Selected value"],
+        )
+        _render_html_table(setup)
+        st.subheader("Input Transparency")
+        _render_html_table(_metadata_table(assumptions))
+
+    with tabs[1]:
         st.plotly_chart(copper_spider_plot(result), use_container_width=True)
         st.plotly_chart(copper_fan_chart(result), use_container_width=True)
         st.plotly_chart(
@@ -230,7 +324,15 @@ def render_monte_carlo_page() -> None:
             ),
             use_container_width=True,
         )
-    with tabs[1]:
+    with tabs[2]:
+        st.caption(
+            "The margin fan chart revalues the selected trade at each simulated "
+            "month using that month's copper price, TC/RC, freight, basis and "
+            "hedge PnL. It is a mark-to-model path, not a cumulative monthly "
+            "cash-flow curve. Its shape is mainly driven by copper price moves, "
+            "hedge offset, TC/RC mean reversion, freight shocks, and fixed carry "
+            "costs applied to the selected trade structure."
+        )
         st.plotly_chart(margin_fan_chart(result), use_container_width=True)
         st.plotly_chart(
             final_distribution(
@@ -240,21 +342,17 @@ def render_monte_carlo_page() -> None:
             ),
             use_container_width=True,
         )
-    with tabs[2]:
+    with tabs[3]:
         summary = result.risk_summary.copy()
         summary["Value"] = summary["Value"].map(lambda value: f"{value:,.4f}" if abs(value) < 10 else f"{value:,.0f}")
-        st.dataframe(summary, use_container_width=True, hide_index=True)
+        _render_html_table(summary)
         st.subheader("Cargo Quantity Context")
         st.caption(
             "These values are not additional risk metrics. They are static cargo "
             "quantities and by-product credit used by the margin calculation."
         )
-        st.dataframe(
-            _static_values_table(result.static_values),
-            use_container_width=True,
-            hide_index=True,
-        )
-    with tabs[3]:
+        _render_html_table(_static_values_table(result.static_values))
+    with tabs[4]:
         price_paths = paths_to_frame(result.copper_price_paths, "copper_price_usd_per_tonne")
         margin_paths_frame = paths_to_frame(result.margin_paths, "margin_usd")
         st.download_button(

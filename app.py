@@ -602,17 +602,26 @@ def show_scenarios(assumptions: ConcentrateAssumptions) -> pd.DataFrame:
         text=scenarios["Net shipment value USD"].map(lambda value: money(value)),
         color_discrete_sequence=px.colors.qualitative.Safe,
     )
-    fig.update_traces(textposition="outside", hovertemplate="%{x}<br>$%{y:,.0f}")
+    y_max = max(0.0, float(scenarios["Net shipment value USD"].max()))
+    y_min = min(0.0, float(scenarios["Net shipment value USD"].min()))
+    y_padding = max(abs(y_max - y_min) * 0.18, 1.0)
+    fig.update_traces(
+        textposition="outside",
+        textfont_size=12,
+        cliponaxis=False,
+        hovertemplate="%{x}<br>$%{y:,.0f}<extra></extra>",
+    )
     fig.update_layout(
         title="Scenario Comparison",
-        height=560,
+        height=620,
         showlegend=False,
         xaxis_title="",
         yaxis_title="Net shipment value (USD)",
-        margin=dict(l=35, r=35, t=80, b=130),
+        bargap=0.28,
+        margin=dict(l=35, r=35, t=115, b=170),
     )
-    fig.update_xaxes(tickangle=0, automargin=True)
-    fig.update_yaxes(tickformat=",.0f")
+    fig.update_xaxes(tickangle=-30, automargin=True)
+    fig.update_yaxes(tickformat=",.0f", range=[y_min - y_padding, y_max + y_padding])
     st.plotly_chart(fig, use_container_width=True)
     return scenarios
 

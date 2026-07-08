@@ -1,145 +1,236 @@
 # Methodology
 
-This document explains the simplified valuation logic used in the Copper Concentrate Trade Economics Dashboard. It is written for an educational project and does not represent a full commercial contract model.
+This document explains the modeling logic used in the Copper Concentrate Trade
+Economics Dashboard. The project is educational and intentionally simplified.
 
-## Wet Metric Tonnes and Dry Metric Tonnes
+## 1. Cargo Quantity Logic
 
-Copper concentrate is often weighed and shipped as wet metric tonnes, or wmt. A wet tonne includes moisture. Commercial valuation normally focuses on dry metric tonnes, or dmt, because the buyer is paying for the dry mineral material and contained metals, not the water.
-
-The dashboard uses:
-
-```text
-dry_metric_tonnes = wet_metric_tonnes * (1 - moisture_percentage / 100)
-```
-
-## Moisture
-
-Moisture reduces the dry quantity available for valuation. A 10,000 wmt shipment at 8% moisture contains 9,200 dmt of dry concentrate. Moisture also matters operationally because it affects handling, transport, and contract specifications.
-
-## Contained Copper Versus Payable Copper
-
-Contained copper is the theoretical copper metal inside the dry concentrate:
+Copper concentrate is shipped in wet metric tonnes, but valuation is normally
+based on dry metric tonnes.
 
 ```text
-contained_copper_tonnes = dry_metric_tonnes * copper_grade_percentage / 100
+dry_metric_tonnes = wet_metric_tonnes * (1 - moisture)
 ```
 
-Payable copper is the portion of contained copper that is commercially paid for after metallurgical recovery and contract deductions. The dashboard models this with a simplified "lesser of" rule:
+Contained copper:
 
 ```text
-payable_by_percentage = contained_copper_tonnes * payable_copper_percentage / 100
-payable_by_deduction =
-    dry_metric_tonnes * (copper_grade_percentage - deduction_unit_percentage) / 100
-
-payable_copper_tonnes = min(payable_by_percentage, payable_by_deduction)
+contained_copper_tonnes = dry_metric_tonnes * copper_grade
 ```
 
-The LME copper price is then applied to payable copper tonnes, not directly to total concentrate tonnes.
-
-## Treatment Charges
-
-Treatment charges, or TC, compensate the smelter for treating the concentrate. TC is expressed in USD per dry metric tonne of concentrate, written as USD/dmt, because the cost relates to processing the bulk concentrate material.
+Payable copper:
 
 ```text
-treatment_charge_usd = dry_metric_tonnes * tc_usd_per_dmt
+payable_copper_tonnes = contained_copper_tonnes * payable_copper_percentage
 ```
 
-## Refining Charges
+The original valuation dashboard also includes a simplified deduction-unit rule
+and uses the lower of percentage payability and deduction payability.
 
-Refining charges, or RC, compensate the smelter for refining the payable copper metal. RC is commonly expressed in US cents per pound of payable copper, written as US¢/lb, because it relates to the metal units being refined.
+## 2. Copper Reference Price
+
+The model does not treat concentrate and refined copper as the same product. It
+uses a copper reference price to value the payable copper contained in the
+concentrate.
 
 ```text
-refining_charge_usd = payable_copper_lb * rc_cents_per_lb / 100
+gross_copper_value = payable_copper_tonnes * copper_price_usd_per_tonne
 ```
 
-## Unit Conversion from Tonnes to Pounds
+Commercial deductions then convert payable metal value into estimated concentrate
+or trade value.
 
-The model uses:
+## 3. TC/RC
+
+Treatment charge:
 
 ```text
-1 metric tonne = 2,204.62262 lb
+treatment_charge = dry_metric_tonnes * tc_usd_per_dmt
 ```
 
-This conversion is required because payable copper is first calculated in metric tonnes, while RC is charged in US cents per pound.
-
-## Freight and Logistics Deductions
-
-Freight and logistics costs are modeled as USD/dmt:
+Refining charge:
 
 ```text
-freight_cost_usd = dry_metric_tonnes * freight_usd_per_dmt
+refining_charge = payable_copper_lbs * rc_usd_per_lb
 ```
 
-This is a simplification. Real logistics economics may include ocean freight, inland transport, port costs, insurance, demurrage, laytime, storage, financing, and timing effects.
+The valuation dashboard takes RC as US cents per pound and converts it to USD.
+The Monte Carlo engine stores RC directly as USD per pound.
 
-## Impurity Penalties
+Negative TC/RC are allowed in the Monte Carlo assumptions to represent a very
+tight concentrate market.
 
-Some concentrates contain deleterious elements that may reduce value or limit the number of suitable smelters. The dashboard models impurity penalties as a single USD/dmt deduction:
+## 4. Impurity Penalties And By-Product Credits
+
+Impurity penalties are simplified as a mix of flat USD/dmt deductions and
+illustrative threshold penalties.
+
+Gold and silver credits are calculated from grade, payability, price, and refining
+charge:
 
 ```text
-flat_impurity_penalty_usd = dry_metric_tonnes * impurity_penalty_usd_per_dmt
+payable_oz = dry_metric_tonnes * grade_g_per_tonne / 31.1034768 * payability
+credit = payable_oz * price
 ```
 
-It also includes illustrative threshold penalties for arsenic, bismuth, and fluorine:
+## 5. Financing Cost
+
+The deterministic valuation dashboard uses simple interest over selected financing
+days.
+
+The Monte Carlo module uses:
 
 ```text
-element_penalty_usd =
-    dry_metric_tonnes
-    * max(0, assay_ppm - threshold_ppm) / 1000
-    * penalty_usd_per_dmt_per_1000ppm
+financing_cost =
+    gross_metal_value
+  * all_in_financing_rate
+  * working_capital_days / 360
 ```
 
-These schedules are deliberately simple and are not intended to represent a specific smelter contract.
-
-## By-Product Credits
-
-Some copper concentrates contain payable gold, silver, or other metals. The dashboard estimates gold and silver credits from grade, payable percentage, metal price, and refining charge:
+Working-capital days are approximated as:
 
 ```text
-payable_oz =
-    dry_metric_tonnes * grade_g_per_dmt / 31.1034768 * payable_percentage / 100
-
-metal_credit_usd = payable_oz * (metal_price_usd_per_oz - refining_charge_usd_per_oz)
+sale_payment_timing_days
+- purchase_payment_timing_days
++ shipping_duration_days
++ storage_duration_months * 30
 ```
 
-The model also allows an other by-product credit in USD/dmt as a catch-all simplification.
+This is a proxy for cash tied up between purchase, shipment/storage, and sale
+settlement.
 
-## Financing Cost
+## 6. Monte Carlo Market Paths
 
-Financing cost is modeled with simple interest on positive pre-financing shipment value:
+The Monte Carlo module simulates monthly paths.
+
+Copper price uses a GBM-style process:
 
 ```text
-financing_cost_usd =
-    max(0, subtotal_before_financing_usd)
-    * annual_financing_rate_percentage / 100
-    * financing_days / 360
+next_price = current_price * exp(monthly_return)
 ```
 
-This is a simple working-capital proxy. A full trade finance model would need payment dates, provisional invoices, final settlement, borrowing spreads, margining, and actual cash-flow timing.
-
-## Net Smelter Return / Estimated Shipment Value
-
-The estimated net shipment value is calculated as:
+TC, RC, freight, and basis use mean reversion:
 
 ```text
-net_value_usd =
-    gross_copper_value_usd
-    - treatment_charge_usd
-    - refining_charge_usd
-    - freight_cost_usd
-    - total_impurity_penalty_usd
-    - financing_cost_usd
-    + byproduct_credit_usd
+next_value =
+    current_value
+  + speed * (long_term_mean - current_value)
+  + volatility * shock
 ```
 
-The dashboard also calculates value per dry metric tonne:
+Freight can also include jump shocks. Shocks can be correlated through the
+fallback correlation matrix.
+
+## 7. Trade Modes
+
+The Monte Carlo engine supports four trade modes.
+
+### Concentrate Merchant
 
 ```text
-value_per_dmt_usd = net_value_usd / dry_metric_tonnes
+mine / producer -> trader -> smelter
 ```
 
-## Limitations
+Margin is estimated as:
 
-This model is simplified. It does not include quotational period optionality, assay exchange, provisional pricing, final settlement, hedging, basis risk, financing costs, credit risk, VAT/tax treatment, insurance, demurrage, smelter-specific penalties, moisture loss adjustments, or detailed payable schedules for gold and silver.
+```text
+simulated concentrate sale invoice
+- initial concentrate purchase invoice
+- logistics and carry costs
++ hedge PnL
+- hedge cost
+```
 
-It is intended to demonstrate commercial reasoning and unit discipline in physical non-ferrous metals trading, not to support live trading decisions.
+### Smelter Conversion
+
+```text
+buy concentrate -> process -> sell recovered refined copper
+```
+
+Margin is estimated as:
+
+```text
+recovered copper value
++ by-product credit
+- concentrate purchase invoice
+- processing cost
+- logistics and carry costs
++ hedge PnL
+- hedge cost
+```
+
+### Refined Copper Trade
+
+```text
+refined copper supplier -> trader -> end user
+```
+
+Margin is estimated as:
+
+```text
+refined sale value
+- refined purchase cost
+- logistics and carry costs
++ hedge PnL
+- hedge cost
+```
+
+### Integrated Conversion
+
+This preserves the initial prototype logic:
+
+```text
+buy concentrate exposure -> carry it -> sell payable copper equivalent
+```
+
+## 8. Hedge Logic
+
+The model assumes long physical copper exposure can be hedged with a short
+futures-style position.
+
+```text
+hedge_pnl =
+    hedge_ratio
+  * payable_copper_tonnes
+  * (initial_effective_price - simulated_effective_price)
+```
+
+The hedge is deliberately simplified. It does not yet fully model futures curves,
+rolls, exchange margin calls, or QP timing.
+
+## 9. Risk Metrics
+
+The Monte Carlo module calculates final margin distributions and summary metrics:
+
+- Expected margin
+- Median margin
+- P5/P95 margin
+- Probability of loss
+- 95% VaR
+- 95% CVaR
+- Maximum drawdown
+- Hedge effectiveness
+
+VaR is reported as a positive downside loss number:
+
+```text
+VaR95 = max(0, -P5_margin)
+```
+
+CVaR is the average loss in the worst 5% tail.
+
+## 10. Limitations
+
+The model does not yet include:
+
+- Full futures curves
+- Full forward physical sale pricing
+- Quotational-period pricing
+- Separate purchase and sale TC/RC books
+- Route-specific freight
+- Detailed smelter penalty schedules
+- Hedge roll and margin-call liquidity
+- Counterparty credit risk
+- Multi-cargo portfolio aggregation
+
+These are natural extensions if the project is developed further.
